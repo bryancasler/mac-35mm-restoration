@@ -31,7 +31,8 @@ live in [CLAUDE.md](../CLAUDE.md).
 topology) committed as `spikes/RESULTS.md`. *The highest-risk item is the deflicker port
 (S1), not vspipe piping — desk research largely de-risked the latter.*
 
-**M2 — SwiftUI app, ffmpeg-only (the useful shipped tool).**
+**M2 — SwiftUI app, ffmpeg-only (the useful shipped tool). ✅ built 2026-07-17;
+headless selftest ALL PASS on the real scan (10/10 criteria); GUI eyeball pending user.**
 Drag-drop + Open dialog → ffprobe JSON probe card (resolution, duration, codec, audio
 tracks, est. size/runtime) → deflicker controls (size 2–129 def 10, mode pm/am/median) →
 encode settings (VT quality slider def 60; audio copy/FLAC; advanced: x265 CRF, FFV1) →
