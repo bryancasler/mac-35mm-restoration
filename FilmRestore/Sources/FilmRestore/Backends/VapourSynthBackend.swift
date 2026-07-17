@@ -136,11 +136,12 @@ final class VapourSynthBackend {
     /// Full restore: VS chain video + audio muxed from source (S3 topology).
     static func fullRunPlan(media: MediaInfo, deflicker: DeflickerSettings,
                             scratch: ScratchSettings, dirt: DirtSettings,
-                            encode: EncodeSettings, scriptsDir: URL) -> ChainPlan {
+                            encode: EncodeSettings, scriptsDir: URL,
+                            passes: Int = 1) -> ChainPlan {
         let out = JobPlan.outputURL(for: media.url)
         let vpy = VpyTemplate.render(source: media.url, trimRange: nil,
                                      deflicker: deflicker, scratch: scratch,
-                                     dirt: dirt, scriptsDir: scriptsDir)
+                                     dirt: dirt, scriptsDir: scriptsDir, passes: passes)
         var args: [String] = ["-nostdin", "-hide_banner",
                               "-f", "yuv4mpegpipe", "-i", "-",
                               "-i", media.url.path,
@@ -157,7 +158,8 @@ final class VapourSynthBackend {
     static func testClipPlan(media: MediaInfo, deflicker: DeflickerSettings,
                              scratch: ScratchSettings, dirt: DirtSettings,
                              encode: EncodeSettings, scriptsDir: URL,
-                             start: Double, duration: Double, label: String) -> ChainPlan {
+                             start: Double, duration: Double, label: String,
+                             passes: Int = 1) -> ChainPlan {
         let startFrame = Int((start * media.fps).rounded())
         let frames = Int((duration * media.fps).rounded())
         let endFrame = min(startFrame + frames, media.totalFrames)
@@ -166,7 +168,7 @@ final class VapourSynthBackend {
         let vpy = VpyTemplate.render(source: media.url,
                                      trimRange: startFrame..<endFrame,
                                      deflicker: deflicker, scratch: scratch,
-                                     dirt: dirt, scriptsDir: scriptsDir)
+                                     dirt: dirt, scriptsDir: scriptsDir, passes: passes)
         var args: [String] = ["-nostdin", "-hide_banner", "-y",
                               "-f", "yuv4mpegpipe", "-i", "-", "-an",
                               "-c:v", "hevc_videotoolbox", "-q:v", String(encode.quality),

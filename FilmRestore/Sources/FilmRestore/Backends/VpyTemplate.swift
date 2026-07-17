@@ -39,12 +39,15 @@ struct DirtSettings: Equatable {
 /// Generates the job .vpy — same chain the S3 spike proved, parameterized.
 enum VpyTemplate {
     /// scriptsDir = directory containing deflicker.py / spotless.py (Bundle.module).
+    /// `passes` (1–3) applies the whole filter chain repeatedly inside ONE graph —
+    /// no intermediate encode, no generational loss.
     static func render(source: URL,
                        trimRange: Range<Int>?,
                        deflicker: DeflickerSettings,
                        scratch: ScratchSettings,
                        dirt: DirtSettings,
-                       scriptsDir: URL) -> String {
+                       scriptsDir: URL,
+                       passes: Int = 1) -> String {
         var lines: [String] = [
             "import sys",
             "import vapoursynth as vs",
@@ -55,22 +58,24 @@ enum VpyTemplate {
         if let r = trimRange {
             lines.append("clip = clip[\(r.lowerBound):\(r.upperBound)]")
         }
+
+        var body: [String] = []   // the chain, as a function body
         if deflicker.enabled {
             lines.append("from deflicker import deflicker")
-            lines.append("clip = deflicker(clip, size=\(deflicker.size), mode=\(pyString(deflicker.mode.rawValue)))")
+            body.append("clip = deflicker(clip, size=\(deflicker.size), mode=\(pyString(deflicker.mode.rawValue)))")
         }
         if scratch.enabled {
             let mark = scratch.markOnly ? ", mark=True" : ""
-            lines.append("clip = core.descratch.DeScratch(clip, mindif=\(scratch.mindif), "
-                       + "asym=\(scratch.asym), maxgap=\(scratch.maxgap), "
-                       + "maxwidth=\(scratch.oddMaxwidth), minlen=\(scratch.minlen), "
-                       + "maxangle=\(scratch.maxangle)\(mark))")
+            body.append("clip = core.descratch.DeScratch(clip, mindif=\(scratch.mindif), "
+                      + "asym=\(scratch.asym), maxgap=\(scratch.maxgap), "
+                      + "maxwidth=\(scratch.oddMaxwidth), minlen=\(scratch.minlen), "
+                      + "maxangle=\(scratch.maxangle)\(mark))")
         }
         if dirt.enabled {
             switch dirt.engine {
             case .removeDirt:
                 // classic composition, zsmooth-only (S2: no RGVS needed)
-                lines += [
+                body += [
                     "cleansed = core.zsmooth.Clense(clip)",
                     "sbegin = core.zsmooth.ForwardClense(clip)",
                     "send = core.zsmooth.BackwardClense(clip)",
@@ -83,8 +88,15 @@ enum VpyTemplate {
                 ]
             case .spotLess:
                 lines.append("from spotless import spotless")
-                lines.append("clip = spotless(clip, radT=\(dirt.radT), thsad=\(dirt.thsad))")
+                body.append("clip = spotless(clip, radT=\(dirt.radT), thsad=\(dirt.thsad))")
             }
+        }
+        if !body.isEmpty {
+            lines.append("def _restore(clip):")
+            lines += body.map { "    " + $0 }
+            lines.append("    return clip")
+            lines.append("for _ in range(\(max(1, min(3, passes)))):")
+            lines.append("    clip = _restore(clip)")
         }
         lines.append("clip.set_output()")
         return lines.joined(separator: "\n") + "\n"

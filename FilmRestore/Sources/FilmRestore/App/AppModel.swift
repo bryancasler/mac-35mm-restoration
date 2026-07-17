@@ -13,6 +13,12 @@ final class AppModel: ObservableObject {
     @Published var clipStartString = "10:00"   // default per requirements
     @Published var clipDuration = 60.0
 
+    @Published var passes = 1                  // 1–3: run the whole chain N times (single encode)
+    @Published var sbsStartString = "10:00"    // side-by-side custom mode
+    @Published var sbsLengthString = "60"
+    @Published var sbsOutput: URL?
+    @Published var lastStats: String?          // completion stats line
+
     @Published var jobLabel: String?           // nil = idle
     @Published var jobProgress: JobProgress?
     @Published var errorMessage: String?
@@ -86,7 +92,8 @@ final class AppModel: ObservableObject {
             let planB = VapourSynthBackend.testClipPlan(
                 media: media, deflicker: deflicker, scratch: scratch, dirt: dirt,
                 encode: encode, scriptsDir: scripts,
-                start: start, duration: clipDuration, label: "B_filtered")
+                start: start, duration: clipDuration, label: "B_filtered",
+                passes: passes)
             errorMessage = nil
             jobTask = Task {
                 do {
@@ -107,7 +114,8 @@ final class AppModel: ObservableObject {
             }
         } else {
             let planB = JobPlan.testClip(media: media, deflicker: deflicker, encode: encode,
-                                         start: start, duration: clipDuration, filtered: true)
+                                         start: start, duration: clipDuration, filtered: true,
+                                         passes: passes)
             runJobs([(planA, "Rendering test clip A (source)…"),
                      (planB, "Rendering test clip B (filtered)…")]) { [weak self] in
                 self?.finishTestClip(a: planA.outputURL, b: planB.outputURL)
@@ -142,27 +150,157 @@ final class AppModel: ObservableObject {
             guard vsReady(), let scripts = VapourSynthBackend.scriptsDir else { return }
             let plan = VapourSynthBackend.fullRunPlan(
                 media: media, deflicker: deflicker, scratch: scratch, dirt: dirt,
-                encode: encode, scriptsDir: scripts)
+                encode: encode, scriptsDir: scripts, passes: passes)
             errorMessage = nil
+            let wallStart = Date()
             jobTask = Task {
                 do {
-                    self.jobLabel = "Restoring full video (VapourSynth chain)…"
+                    self.jobLabel = "Restoring full video (VapourSynth chain, \(self.passes)×)…"
                     self.jobProgress = nil
                     let est = estimatedFullRunBytes()
                     _ = try await vsBackend.run(plan: plan, estimatedOutputBytes: est) { s in
                         Task { @MainActor in self.jobProgress = s }
                     }
                     self.lastOutput = plan.outputURL
+                    self.recordStats(label: "Full restore", started: wallStart,
+                                     frames: plan.totalFrames, output: plan.outputURL)
                 } catch { self.surface(error) }
                 self.jobLabel = nil
                 self.jobProgress = nil
             }
         } else {
-            let plan = JobPlan.fullRun(media: media, deflicker: deflicker, encode: encode)
+            let plan = JobPlan.fullRun(media: media, deflicker: deflicker, encode: encode,
+                                       passes: passes)
             runJobs([(plan, "Restoring full video…")]) { [weak self] in
                 self?.lastOutput = plan.outputURL
             }
         }
+    }
+
+    // MARK: side-by-side comparison
+
+    /// Renders source|restored comparison video. quick=true: six random 10 s
+    /// segments stitched into a 1-minute reel; else the user's start+length.
+    func renderSideBySide(quick: Bool) {
+        guard let media, !isBusy else { return }
+        if needsVS && !vsReady() { return }
+        let segments: [SideBySide.Segment]
+        if quick {
+            var rng = SystemRandomNumberGenerator()
+            segments = SideBySide.quickSampleSegments(duration: media.durationSeconds,
+                                                      using: &rng)
+        } else {
+            guard let start = Self.parse(timestamp: sbsStartString),
+                  let len = Double(sbsLengthString), len > 0 else {
+                errorMessage = "Bad side-by-side start/length"
+                return
+            }
+            let clampedStart = min(max(0, start), max(0, media.durationSeconds - len))
+            segments = [SideBySide.Segment(start: clampedStart,
+                                           duration: min(len, media.durationSeconds))]
+        }
+
+        errorMessage = nil
+        let wallStart = Date()
+        jobTask = Task {
+            do {
+                var stacked: [URL] = []
+                var totalFrames = 0
+                for (i, seg) in segments.enumerated() {
+                    let tag = segments.count > 1 ? " \(i + 1)/\(segments.count)" : ""
+                    // A: source segment
+                    self.jobLabel = "Side-by-side\(tag): source segment…"
+                    self.jobProgress = nil
+                    let planA = JobPlan.testClip(media: media, deflicker: self.deflicker,
+                                                 encode: self.encode, start: seg.start,
+                                                 duration: seg.duration, filtered: false,
+                                                 outputName: "sbs_\(i)_A.mp4")
+                    _ = try await self.backend.run(plan: planA, estimatedOutputBytes: 30_000_000) { s in
+                        Task { @MainActor in self.jobProgress = s }
+                    }
+                    // B: restored segment (passes applied)
+                    self.jobLabel = "Side-by-side\(tag): restored segment (\(self.passes)×)…"
+                    self.jobProgress = nil
+                    let bURL: URL
+                    if self.needsVS, let scripts = VapourSynthBackend.scriptsDir {
+                        let planB = VapourSynthBackend.testClipPlan(
+                            media: media, deflicker: self.deflicker, scratch: self.scratch,
+                            dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
+                            start: seg.start, duration: seg.duration,
+                            label: "sbs_\(i)_B", passes: self.passes)
+                        bURL = try await self.vsBackend.run(plan: planB, estimatedOutputBytes: 30_000_000) { s in
+                            Task { @MainActor in self.jobProgress = s }
+                        }
+                    } else {
+                        let planB = JobPlan.testClip(media: media, deflicker: self.deflicker,
+                                                     encode: self.encode, start: seg.start,
+                                                     duration: seg.duration, filtered: true,
+                                                     passes: self.passes,
+                                                     outputName: "sbs_\(i)_B.mp4")
+                        bURL = try await self.backend.run(plan: planB, estimatedOutputBytes: 30_000_000) { s in
+                            Task { @MainActor in self.jobProgress = s }
+                        }
+                    }
+                    // stack the pair
+                    self.jobLabel = "Side-by-side\(tag): stacking…"
+                    let stackedURL = AppDirs.testClips.appendingPathComponent("sbs_\(i)_stacked.mp4")
+                    let frames = Int((seg.duration * media.fps).rounded())
+                    totalFrames += frames
+                    let stackPlan = JobPlan(kind: .utility("hstack"),
+                                            args: SideBySide.hstackArgs(a: planA.outputURL, b: bURL,
+                                                                        quality: self.encode.quality,
+                                                                        output: stackedURL),
+                                            outputURL: stackedURL, totalFrames: frames,
+                                            sourceURL: media.url)
+                    _ = try await self.backend.run(plan: stackPlan, estimatedOutputBytes: 60_000_000) { s in
+                        Task { @MainActor in self.jobProgress = s }
+                    }
+                    stacked.append(stackedURL)
+                }
+
+                // stitch (or move the single segment) next to the source
+                let out = JobPlan.outputURL(for: media.url, ext: "mp4", suffix: "sidebyside")
+                if stacked.count == 1 {
+                    try FileManager.default.copyItem(at: stacked[0], to: out)
+                } else {
+                    self.jobLabel = "Side-by-side: stitching \(stacked.count) segments…"
+                    let list = AppDirs.testClips.appendingPathComponent("sbs_concat.txt")
+                    try SideBySide.writeConcatList(segments: stacked, to: list)
+                    let concatPlan = JobPlan(kind: .utility("concat"),
+                                             args: SideBySide.concatArgs(listFile: list, output: out),
+                                             outputURL: out, totalFrames: totalFrames,
+                                             sourceURL: media.url)
+                    _ = try await self.backend.run(plan: concatPlan, estimatedOutputBytes: 200_000_000) { s in
+                        Task { @MainActor in self.jobProgress = s }
+                    }
+                }
+                self.sbsOutput = out
+                self.recordStats(label: "Side-by-side", started: wallStart,
+                                 frames: totalFrames, output: out)
+            } catch { self.surface(error) }
+            self.jobLabel = nil
+            self.jobProgress = nil
+        }
+    }
+
+    // MARK: completion stats
+
+    func recordStats(label: String, started: Date, frames: Int, output: URL?) {
+        let wall = Date().timeIntervalSince(started)
+        guard wall > 0 else { return }
+        var parts = [label,
+                     "\(frames) frames",
+                     String(format: "%.1f s", wall),
+                     String(format: "%.0f fps", Double(frames) / wall)]
+        if let media {
+            let rt = (Double(frames) / media.fps) / wall
+            parts.append(String(format: "%.1f× realtime", rt))
+        }
+        if let output,
+           let size = try? FileManager.default.attributesOfItem(atPath: output.path)[.size] as? Int64 {
+            parts.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+        }
+        lastStats = parts.joined(separator: " · ")
     }
 
     // MARK: presets + queue (M5)
@@ -197,14 +335,16 @@ final class AppModel: ObservableObject {
                     if self.needsVS, let scripts = VapourSynthBackend.scriptsDir {
                         let plan = VapourSynthBackend.fullRunPlan(
                             media: m, deflicker: self.deflicker, scratch: self.scratch,
-                            dirt: self.dirt, encode: self.encode, scriptsDir: scripts)
+                            dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
+                            passes: self.passes)
                         out = try await self.vsBackend.run(
                             plan: plan,
                             estimatedOutputBytes: m.estimatedOutputBytes(quality: self.encode.quality)) { s in
                             Task { @MainActor in self.jobProgress = s }
                         }
                     } else {
-                        let plan = JobPlan.fullRun(media: m, deflicker: self.deflicker, encode: self.encode)
+                        let plan = JobPlan.fullRun(media: m, deflicker: self.deflicker,
+                                                   encode: self.encode, passes: self.passes)
                         out = try await self.backend.run(
                             plan: plan,
                             estimatedOutputBytes: m.estimatedOutputBytes(quality: self.encode.quality)) { s in
@@ -243,6 +383,7 @@ final class AppModel: ObservableObject {
 
     private func runJobs(_ jobs: [(JobPlan, String)], onSuccess: @escaping () -> Void) {
         errorMessage = nil
+        let wallStart = Date()
         jobTask = Task {
             do {
                 for (plan, label) in jobs {
@@ -252,6 +393,12 @@ final class AppModel: ObservableObject {
                     _ = try await backend.run(plan: plan, estimatedOutputBytes: est) { snapshot in
                         Task { @MainActor in self.jobProgress = snapshot }
                     }
+                }
+                if let last = jobs.last?.0 {
+                    self.recordStats(label: jobs.count > 1 ? "Job batch" : "Job",
+                                     started: wallStart,
+                                     frames: jobs.reduce(0) { $0 + $1.0.totalFrames },
+                                     output: last.outputURL)
                 }
                 onSuccess()
             } catch is CancellationError {
@@ -279,6 +426,8 @@ final class AppModel: ObservableObject {
             return media.estimatedOutputBytes(quality: encode.quality)
         case .testClipSource(_, let d), .testClipFiltered(_, let d):
             return Int64(d * 2.5e6 / 8 * 2)
+        case .utility:
+            return 200_000_000
         }
     }
 

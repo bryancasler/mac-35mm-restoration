@@ -66,6 +66,7 @@ struct JobPlan {
         case fullRun
         case testClipSource(start: Double, duration: Double)   // A side (no filters)
         case testClipFiltered(start: Double, duration: Double) // B side
+        case utility(String)                                   // hstack/concat steps
     }
 
     var kind: Kind
@@ -84,25 +85,33 @@ struct JobPlan {
         return a
     }
 
-    /// NAME.restored.mkv next to the source, with a collision counter —
+    /// NAME.<suffix>.<ext> next to the source, with a collision counter —
     /// never overwrite anything (ADR-10).
-    static func outputURL(for source: URL, ext: String = "mkv") -> URL {
+    static func outputURL(for source: URL, ext: String = "mkv",
+                          suffix: String = "restored") -> URL {
         let dir = source.deletingLastPathComponent()
         let base = source.deletingPathExtension().lastPathComponent
-        var candidate = dir.appendingPathComponent("\(base).restored.\(ext)")
+        var candidate = dir.appendingPathComponent("\(base).\(suffix).\(ext)")
         var n = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = dir.appendingPathComponent("\(base).restored-\(n).\(ext)")
+            candidate = dir.appendingPathComponent("\(base).\(suffix)-\(n).\(ext)")
             n += 1
         }
         return candidate
     }
 
+    /// Comma-chained filter string: passes=2 → "deflicker=…,deflicker=…" — the
+    /// whole (ffmpeg-only) chain applied N times in one filtergraph, single encode.
+    static func filterChain(_ deflicker: DeflickerSettings, passes: Int) -> String {
+        Array(repeating: deflicker.filterString, count: max(1, min(3, passes)))
+            .joined(separator: ",")
+    }
+
     static func fullRun(media: MediaInfo, deflicker: DeflickerSettings,
-                        encode: EncodeSettings) -> JobPlan {
+                        encode: EncodeSettings, passes: Int = 1) -> JobPlan {
         let out = outputURL(for: media.url, ext: encode.codec == .ffv1 ? "mkv" : "mkv")
         var args: [String] = ["-nostdin", "-hide_banner", "-i", media.url.path, "-map", "0"]
-        if deflicker.enabled { args += ["-vf", deflicker.filterString] }
+        if deflicker.enabled { args += ["-vf", filterChain(deflicker, passes: passes)] }
         args += encode.videoArgs
         args += colorArgs(media)
         args += encode.audioArgs
@@ -115,9 +124,10 @@ struct JobPlan {
     /// amendment). Both sides re-encode with identical -ss/-t so frames align.
     static func testClip(media: MediaInfo, deflicker: DeflickerSettings,
                          encode: EncodeSettings, start: Double, duration: Double,
-                         filtered: Bool) -> JobPlan {
+                         filtered: Bool, passes: Int = 1,
+                         outputName: String? = nil) -> JobPlan {
         let frames = Int((duration * media.fps).rounded())
-        let name = filtered ? "clip_B_filtered.mp4" : "clip_A_source.mp4"
+        let name = outputName ?? (filtered ? "clip_B_filtered.mp4" : "clip_A_source.mp4")
         let out = AppDirs.testClips.appendingPathComponent(name)
         try? FileManager.default.removeItem(at: out)
         // -ss before -i: fast keyframe seek, then accurate to requested time
@@ -125,7 +135,7 @@ struct JobPlan {
                               "-ss", String(format: "%.6f", start),
                               "-t", String(format: "%.6f", duration),
                               "-i", media.url.path, "-map", "0:v:0", "-an"]
-        if filtered && deflicker.enabled { args += ["-vf", deflicker.filterString] }
+        if filtered && deflicker.enabled { args += ["-vf", filterChain(deflicker, passes: passes)] }
         // Preview clips always use VideoToolbox regardless of the full-run codec:
         // they exist for A/B viewing, and AVPlayer needs hvc1-in-MP4.
         args += ["-c:v", "hevc_videotoolbox", "-q:v", String(encode.quality), "-tag:v", "hvc1"]

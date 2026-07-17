@@ -67,6 +67,7 @@ final class FFmpegBackend {
         case .fullRun: return "fullrun"
         case .testClipSource: return "clipA"
         case .testClipFiltered: return "clipB"
+        case .utility(let name): return name
         }
     }
 }

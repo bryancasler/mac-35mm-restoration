@@ -17,6 +17,64 @@ enum Entry {
         }
         // Headless provisioning (verification/CI use; the GUI path adds the
         // per-download approval sheet — running this flag IS the approval).
+        // Headless side-by-side smoke: 2 segments × 3 s, hstack + concat, verify.
+        if let idx = CommandLine.arguments.firstIndex(of: "--selftest-sbs"),
+           CommandLine.arguments.count > idx + 1 {
+            let url = URL(fileURLWithPath: CommandLine.arguments[idx + 1])
+            guard let media = try? Probe.probe(url) else { print("FAIL probe"); exit(1) }
+            let backend = FFmpegBackend()
+            let sema = DispatchSemaphore(value: 0)
+            var stacked: [URL] = []
+            let segs = [SideBySide.Segment(start: 60, duration: 3),
+                        SideBySide.Segment(start: 120, duration: 3)]
+            for (i, seg) in segs.enumerated() {
+                let a = JobPlan.testClip(media: media, deflicker: DeflickerSettings(),
+                                         encode: EncodeSettings(), start: seg.start,
+                                         duration: seg.duration, filtered: false,
+                                         outputName: "sbs_st_\(i)_A.mp4")
+                let b = JobPlan.testClip(media: media, deflicker: DeflickerSettings(),
+                                         encode: EncodeSettings(), start: seg.start,
+                                         duration: seg.duration, filtered: true,
+                                         passes: 2, outputName: "sbs_st_\(i)_B.mp4")
+                let stackURL = AppDirs.testClips.appendingPathComponent("sbs_st_\(i).mp4")
+                let stack = JobPlan(kind: .utility("hstack"),
+                                    args: SideBySide.hstackArgs(a: a.outputURL, b: b.outputURL,
+                                                                quality: 60, output: stackURL),
+                                    outputURL: stackURL,
+                                    totalFrames: Int(3 * media.fps), sourceURL: url)
+                Task.detached {
+                    do {
+                        _ = try await backend.run(plan: a, estimatedOutputBytes: 10_000_000) { _ in }
+                        _ = try await backend.run(plan: b, estimatedOutputBytes: 10_000_000) { _ in }
+                        _ = try await backend.run(plan: stack, estimatedOutputBytes: 20_000_000) { _ in }
+                        stacked.append(stackURL)
+                    } catch { print("FAIL segment \(i): \(error.localizedDescription)") }
+                    sema.signal()
+                }
+                sema.wait()
+            }
+            guard stacked.count == 2 else { print("FAIL segments"); exit(1) }
+            let list = AppDirs.testClips.appendingPathComponent("sbs_st_concat.txt")
+            let out = AppDirs.testClips.appendingPathComponent("sbs_st_final.mp4")
+            try? FileManager.default.removeItem(at: out)
+            try? SideBySide.writeConcatList(segments: stacked, to: list)
+            let concat = JobPlan(kind: .utility("concat"),
+                                 args: SideBySide.concatArgs(listFile: list, output: out),
+                                 outputURL: out, totalFrames: Int(6 * media.fps), sourceURL: url)
+            Task.detached {
+                do { _ = try await backend.run(plan: concat, estimatedOutputBytes: 40_000_000) { _ in } }
+                catch { print("FAIL concat: \(error.localizedDescription)") }
+                sema.signal()
+            }
+            sema.wait()
+            guard let p = try? Probe.probe(out) else { print("FAIL probe output"); exit(1) }
+            let widthOK = p.width == media.width * 2
+            let framesOK = abs(p.totalFrames - Int(6 * media.fps)) <= 2
+            print("sbs output: \(p.width)x\(p.height), \(p.totalFrames) frames, "
+                + "\(String(format: "%.2f", p.durationSeconds)) s")
+            print(widthOK && framesOK ? "== SBS PASS" : "== SBS FAIL")
+            exit(widthOK && framesOK ? 0 : 1)
+        }
         if CommandLine.arguments.contains("--provision") {
             let p = PluginProvisioner()
             p.onStatus = { print($0) }

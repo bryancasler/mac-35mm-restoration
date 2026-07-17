@@ -42,7 +42,16 @@ Fixed, validated processing order: **deflicker → scratch removal → dirt remo
 4. **Restore full video** — output lands next to the source as `NAME.restored.mkv`
    (never overwrites; the source is opened read-only). Progress shows fps + ETA;
    sleep is prevented; every job writes a log to `~/Library/Logs/FilmRestore/`.
-5. Batch: add files to the Queue and run them all with the current settings.
+5. **Side-by-side comparison** — renders source (left) and restored (right) into one
+   video next to the source (`NAME.sidebyside.mp4`): either a chosen start + length,
+   or *Quick sample*, which picks six random 10-second segments spread across the
+   film and stitches them into a one-minute comparison reel.
+6. **Double/triple processing** — the 1×/2×/3× selector runs the whole restoration
+   chain that many times *inside a single encode* (no generational loss, no
+   intermediate files). Applies to full runs, test clips, side-by-side, and the queue.
+7. Batch: add files to the Queue and run them all with the current settings.
+   Live stats (frames/fps/speed/ETA) show during every job; a summary line
+   (frames · wall time · fps · realtime × · output size) appears when it finishes.
 
 Measured on an M4 Pro against a real 1440x1080 35mm scan: the full restoration
 chain runs ~250 fps (≈10x realtime) — a 90-minute film in ~9 minutes.

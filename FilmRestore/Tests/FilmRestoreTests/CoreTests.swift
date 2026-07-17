@@ -195,3 +195,67 @@ final class VpyTemplateTests: XCTestCase {
         XCTAssertTrue(VpyTemplate.needsVapourSynth(scratch: s, dirt: DirtSettings()))
     }
 }
+
+final class MultiPassAndSideBySideTests: XCTestCase {
+    func testFfmpegFilterChainRepetition() {
+        let d = DeflickerSettings()
+        XCTAssertEqual(JobPlan.filterChain(d, passes: 1), "deflicker=mode=pm:size=10")
+        XCTAssertEqual(JobPlan.filterChain(d, passes: 2),
+                       "deflicker=mode=pm:size=10,deflicker=mode=pm:size=10")
+        XCTAssertEqual(JobPlan.filterChain(d, passes: 7).components(separatedBy: ",").count, 3,
+                       "passes clamp to 3")
+    }
+
+    func testVpyPassesLoop() {
+        var scratch = ScratchSettings(); scratch.enabled = true
+        let vpy = VpyTemplate.render(source: URL(fileURLWithPath: "/tmp/x.mkv"),
+                                     trimRange: nil, deflicker: DeflickerSettings(),
+                                     scratch: scratch, dirt: DirtSettings(),
+                                     scriptsDir: URL(fileURLWithPath: "/tmp/s"), passes: 3)
+        XCTAssertTrue(vpy.contains("for _ in range(3):"))
+        XCTAssertTrue(vpy.contains("def _restore(clip):"))
+        // chain body appears once (inside the function), applied N times by the loop
+        XCTAssertEqual(vpy.components(separatedBy: "DeScratch").count - 1, 1)
+    }
+
+    func testQuickSampleSegments() {
+        var rng = SystemRandomNumberGenerator()
+        let segs = SideBySide.quickSampleSegments(duration: 5491.5, using: &rng)
+        XCTAssertEqual(segs.count, 6)
+        for s in segs {
+            XCTAssertGreaterThanOrEqual(s.start, 15.0 - 0.001)
+            XCTAssertLessThanOrEqual(s.start + s.duration, 5491.5 - 15.0 + 0.001)
+            XCTAssertEqual(s.duration, 10)
+        }
+        // strictly increasing, non-overlapping
+        for (a, b) in zip(segs, segs.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(b.start, a.start + a.duration - 0.001)
+        }
+        XCTAssertEqual(segs.reduce(0.0) { $0 + $1.duration }, 60.0, "6×10 s = 1 min reel")
+    }
+
+    func testQuickSampleShortFile() {
+        var rng = SystemRandomNumberGenerator()
+        let segs = SideBySide.quickSampleSegments(duration: 30, using: &rng)
+        XCTAssertEqual(segs.count, 1, "short files degrade to a single segment")
+        XCTAssertLessThanOrEqual(segs[0].start + segs[0].duration, 30)
+    }
+
+    func testHstackAndConcatArgs() throws {
+        let args = SideBySide.hstackArgs(a: URL(fileURLWithPath: "/tmp/a.mp4"),
+                                         b: URL(fileURLWithPath: "/tmp/b.mp4"),
+                                         quality: 60, output: URL(fileURLWithPath: "/tmp/o.mp4"))
+        XCTAssertTrue(args.joined(separator: " ").contains("[0:v][1:v]hstack=inputs=2"))
+        let list = FileManager.default.temporaryDirectory.appendingPathComponent("cl.txt")
+        try SideBySide.writeConcatList(segments: [URL(fileURLWithPath: "/tmp/it's.mp4")], to: list)
+        let body = try String(contentsOf: list, encoding: .utf8)
+        XCTAssertTrue(body.contains("file '/tmp/it'\\''s.mp4'"), "single quotes escaped for concat demuxer")
+        try? FileManager.default.removeItem(at: list)
+    }
+
+    func testSidebySideOutputSuffix() {
+        let out = JobPlan.outputURL(for: URL(fileURLWithPath: "/tmp/scan.mkv"),
+                                    ext: "mp4", suffix: "sidebyside")
+        XCTAssertEqual(out.lastPathComponent, "scan.sidebyside.mp4")
+    }
+}

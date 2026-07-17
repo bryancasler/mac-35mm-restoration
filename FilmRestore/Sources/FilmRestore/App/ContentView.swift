@@ -88,8 +88,14 @@ struct ContentView: View {
                 GroupBox("Dirt removal") { dirtControls }
                 GroupBox("Encode") { encodeControls }
                 GroupBox("Test clip") { testClipControls(media) }
+                GroupBox("Side-by-side comparison") { sideBySideControls }
                 GroupBox("Queue") { queueControls }
                 actions(media)
+                if let stats = model.lastStats, !model.isBusy {
+                    Label(stats, systemImage: "chart.bar")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
                 if let out = model.lastOutput {
                     Label {
                         Text("Done: \(out.lastPathComponent)")
@@ -246,6 +252,37 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var sideBySideControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Renders source (left) and restored (right) into one video.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Text("Start at")
+                TextField("10:00", text: $model.sbsStartString).frame(width: 90)
+                Text("for")
+                TextField("60", text: $model.sbsLengthString).frame(width: 50)
+                Text("s")
+                Button("Render side-by-side") { model.renderSideBySide(quick: false) }
+                    .disabled(model.isBusy)
+            }
+            HStack {
+                Button("Quick sample (6 × 10 s random → 1 min reel)") {
+                    model.renderSideBySide(quick: true)
+                }.disabled(model.isBusy)
+            }
+            if let out = model.sbsOutput {
+                HStack {
+                    Label(out.lastPathComponent, systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Button("Open") { NSWorkspace.shared.open(out) }
+                    Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([out]) }
+                }
+            }
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var queueControls: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -278,6 +315,14 @@ struct ContentView: View {
 
     private func actions(_ media: MediaInfo) -> some View {
         HStack {
+            Picker("Processing", selection: $model.passes) {
+                Text("1×").tag(1)
+                Text("2× double").tag(2)
+                Text("3× triple").tag(3)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 260)
+            .help("Run the whole restoration chain this many times in a single encode (no generational loss). Applies to full runs, test clips, and side-by-side.")
             Spacer()
             Button {
                 model.runFullRestore()
