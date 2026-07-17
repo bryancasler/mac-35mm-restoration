@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -366,7 +367,24 @@ final class AppModel: ObservableObject {
     private func surface(_ error: Error) {
         if error is CancellationError { return }
         if let e = error as? JobError, case .cancelled = e { return }
+        lastFailedJob = jobLabel
         errorMessage = error.localizedDescription
+    }
+
+    // MARK: debug report
+
+    var lastFailedJob: String?
+
+    /// Copies the full troubleshooting report to the clipboard (error alert's
+    /// "Copy debug info" button).
+    func copyDebugReport() {
+        let report = DebugReport.build(error: errorMessage ?? "(no error message)",
+                                       failedJob: lastFailedJob,
+                                       media: media,
+                                       deflicker: deflicker, scratch: scratch,
+                                       dirt: dirt, encode: encode, passes: passes)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report, forType: .string)
     }
 
     private func estimatedFullRunBytes() -> Int64 {

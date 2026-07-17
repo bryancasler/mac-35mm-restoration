@@ -34,9 +34,14 @@ struct ContentView: View {
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } })
         ) {
+            Button("Copy debug info") {
+                model.copyDebugReport()
+                model.errorMessage = nil
+            }
             Button("OK") { model.errorMessage = nil }
         } message: {
-            Text(model.errorMessage ?? "")
+            Text((model.errorMessage ?? "")
+                 + "\n\n“Copy debug info” puts the error, all settings, and the job log tail on the clipboard — paste it into the Claude session to troubleshoot.")
         }
         .sheet(isPresented: $model.showABPlayer) { abSheet }
         .fileImporter(isPresented: $showOpenPanel, allowedContentTypes: [.movie, .mpeg4Movie, .item]) {

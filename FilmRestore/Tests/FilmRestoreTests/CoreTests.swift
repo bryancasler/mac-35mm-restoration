@@ -259,3 +259,28 @@ final class MultiPassAndSideBySideTests: XCTestCase {
         XCTAssertEqual(out.lastPathComponent, "scan.sidebyside.mp4")
     }
 }
+
+final class DebugReportTests: XCTestCase {
+    func testReportContainsErrorSettingsAndEnvironment() {
+        var scratch = ScratchSettings(); scratch.enabled = true; scratch.maxwidth = 4
+        var dirt = DirtSettings(); dirt.enabled = true; dirt.engine = .spotLess
+        let media = MediaInfo(url: URL(fileURLWithPath: "/tmp/scan.mkv"), width: 1440,
+                              height: 1080, fpsNum: 24000, fpsDen: 1001,
+                              durationSeconds: 100, sizeBytes: 1, videoCodec: "h264",
+                              pixFmt: "yuv420p", colorRange: "tv", colorSpace: "bt709",
+                              colorPrimaries: nil, colorTransfer: nil, audioTracks: [])
+        let r = DebugReport.build(error: "ffmpeg exited with status 234",
+                                  failedJob: "Side-by-side 2/6: stacking…",
+                                  media: media, deflicker: DeflickerSettings(),
+                                  scratch: scratch, dirt: dirt,
+                                  encode: EncodeSettings(), passes: 2)
+        XCTAssertTrue(r.contains("ffmpeg exited with status 234"))
+        XCTAssertTrue(r.contains("Side-by-side 2/6"))
+        XCTAssertTrue(r.contains("passes: 2"))
+        XCTAssertTrue(r.contains("maxwidth=5"), "reports the coerced odd value actually used")
+        XCTAssertTrue(r.contains("engine=spotLess"))
+        XCTAssertTrue(r.contains("1440x1080"))
+        XCTAssertTrue(r.contains("space=bt709"))
+        XCTAssertTrue(r.contains("ffmpeg:"), "environment section present")
+    }
+}
