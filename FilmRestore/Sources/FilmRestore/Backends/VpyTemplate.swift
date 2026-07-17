@@ -6,10 +6,11 @@ struct ScratchSettings: Equatable {
     var enabled = false
     var mindif = 5          // 1...255, detection threshold
     var asym = 10
-    var maxgap = 3
-    var maxwidth = 3        // ODD 1...15 (plugin constraint, S2)
-    var minlen = 100
-    var maxangle = 3.0
+    var maxgap = 8          // was 3 — real scratches break up; measured 2026-07-17
+    var maxwidth = 5        // ODD 1...15 (plugin constraint, S2); was 3
+    var minlen = 40         // was 100 — that required a 100px continuous run and
+                            // detected ~nothing on the real scan (0.0004 mean Δ)
+    var maxangle = 5.0      // was 3
     var markOnly = false    // DeScratch mark mode: highlight, don't fix
 
     var oddMaxwidth: Int { maxwidth | 1 }  // UI safety: force odd
@@ -84,7 +85,10 @@ enum VpyTemplate {
         if dirt.enabled {
             switch dirt.engine {
             case .removeDirt:
-                // classic composition, zsmooth-only (S2: no RGVS needed)
+                // canonical composition (avisynth.nl/RemoveDirt), zsmooth-only.
+                // RestoreMotionBlocks(filtered, restore): the CLEANSED clip goes
+                // FIRST; motion blocks are copied from the original INTO it —
+                // inverted args silently output the original nearly unchanged.
                 body += [
                     "cleansed = core.zsmooth.Clense(clip)",
                     "sbegin = core.zsmooth.ForwardClense(clip)",
@@ -92,9 +96,9 @@ enum VpyTemplate {
                     "scsel = core.removedirt.SCSelect(clip, sbegin, send, cleansed)",
                     "alt = core.zsmooth.Repair(scsel, clip, mode=[16, 16, 1])",
                     "restore = core.zsmooth.Repair(cleansed, clip, mode=[16, 16, 1])",
-                    "clip = core.removedirt.RestoreMotionBlocks(clip, restore, neighbour=scsel, "
-                        + "alternative=alt, gmthreshold=\(dirt.gmthreshold), "
-                        + "mthreshold=\(dirt.mthreshold), dist=1, noise=10, noisy=12)",
+                    "clip = core.removedirt.RestoreMotionBlocks(restore, clip, neighbour=alt, "
+                        + "gmthreshold=\(dirt.gmthreshold), "
+                        + "mthreshold=\(dirt.mthreshold), dist=1, dmode=2, noise=10, noisy=12)",
                 ]
             case .spotLess:
                 lines.append("from spotless import spotless")

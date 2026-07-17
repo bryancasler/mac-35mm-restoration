@@ -168,3 +168,21 @@ progressively** — 80 fps at start → 65 mid-run → 39 fps at 97% (1.6x realt
 longer than any spike window points at accumulation (prime suspect: deflicker.py's
 per-frame std.Lut node creation — 131k transient nodes), not a constant throttle;
 `pmset` showed Low Power Mode OFF mid-run. Output correctness unaffected.
+
+## Correction (2026-07-17, evening): RemoveDirt args were inverted; DeScratch defaults inert
+
+Field report ("nearly all dirt/scratches still visible") led to two findings, both
+measured on frames 14000–14239 of the real scan (mean |Δ| luma per pixel, 0–255):
+
+1. **RestoreMotionBlocks args were inverted** in the app template AND
+   s2_plugins/bench.vpy: canonical order is `(filtered, restore)` — cleansed clip
+   FIRST, original second (avisynth.nl/RemoveDirt). Inverted, the filter outputs the
+   original nearly unchanged (cleaning only inside motion blocks — backwards).
+   Measured: inverted 0.0985 vs corrected 0.3519 (3.6× more actual cleaning); the
+   corrected form also uses `neighbour=alt, dmode=2` per the canonical script.
+   S2's fps numbers are unaffected (identical computation); no quality verdict was
+   ever based on the inverted output.
+2. **DeScratch stock defaults detect nothing on this scan**: minlen=100 (a 100 px
+   continuous run) → 0.0004 mean Δ ≈ zero pixels touched. Relaxed geometry with
+   unchanged sensitivity (maxgap 3→8, maxwidth 3→5, minlen 100→40, maxangle 3→5,
+   mindif stays 5) → 0.1745. Adopted as app defaults; tune per film via mark mode.
