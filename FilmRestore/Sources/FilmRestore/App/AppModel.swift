@@ -201,6 +201,19 @@ final class AppModel: ObservableObject {
                                            duration: min(len, media.durationSeconds))]
         }
 
+        // Pre-flight disk check: intermediates cost ~4 clip-streams per segment
+        // (A + B + double-width stacked) before cleanup, plus the final reel.
+        let perSecond = encode.estimatedBytesPerSecond(width: media.width, height: media.height)
+        let totalSeconds = segments.reduce(0.0) { $0 + $1.duration }
+        let needed = Int64(perSecond * totalSeconds * 4)
+        if !DiskGuard.hasRoom(estimatedBytes: needed, destination: media.url) {
+            let f = ByteCountFormatter()
+            errorMessage = "Side-by-side at quality \(encode.quality) needs roughly "
+                + f.string(fromByteCount: needed) + " of scratch space — free up disk "
+                + "or lower the quality slider."
+            return
+        }
+
         errorMessage = nil
         let wallStart = Date()
         jobTask = Task {
@@ -209,6 +222,7 @@ final class AppModel: ObservableObject {
                 var totalFrames = 0
                 for (i, seg) in segments.enumerated() {
                     let tag = segments.count > 1 ? " \(i + 1)/\(segments.count)" : ""
+                    let clipEstimate = Int64(perSecond * seg.duration * 1.5)
                     // A: source segment
                     self.jobLabel = "Side-by-side\(tag): source segment…"
                     self.jobProgress = nil
@@ -216,7 +230,7 @@ final class AppModel: ObservableObject {
                                                  encode: self.encode, start: seg.start,
                                                  duration: seg.duration, filtered: false,
                                                  outputName: "sbs_\(i)_A.mp4")
-                    _ = try await self.backend.run(plan: planA, estimatedOutputBytes: 30_000_000) { s in
+                    _ = try await self.backend.run(plan: planA, estimatedOutputBytes: clipEstimate) { s in
                         Task { @MainActor in self.jobProgress = s }
                     }
                     // B: restored segment (passes applied)
@@ -229,7 +243,7 @@ final class AppModel: ObservableObject {
                             dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
                             start: seg.start, duration: seg.duration,
                             label: "sbs_\(i)_B", passes: self.passes)
-                        bURL = try await self.vsBackend.run(plan: planB, estimatedOutputBytes: 30_000_000) { s in
+                        bURL = try await self.vsBackend.run(plan: planB, estimatedOutputBytes: clipEstimate) { s in
                             Task { @MainActor in self.jobProgress = s }
                         }
                     } else {
@@ -238,7 +252,7 @@ final class AppModel: ObservableObject {
                                                      duration: seg.duration, filtered: true,
                                                      passes: self.passes,
                                                      outputName: "sbs_\(i)_B.mp4")
-                        bURL = try await self.backend.run(plan: planB, estimatedOutputBytes: 30_000_000) { s in
+                        bURL = try await self.backend.run(plan: planB, estimatedOutputBytes: clipEstimate) { s in
                             Task { @MainActor in self.jobProgress = s }
                         }
                     }
@@ -253,32 +267,50 @@ final class AppModel: ObservableObject {
                                                                         output: stackedURL),
                                             outputURL: stackedURL, totalFrames: frames,
                                             sourceURL: media.url)
-                    _ = try await self.backend.run(plan: stackPlan, estimatedOutputBytes: 60_000_000) { s in
+                    _ = try await self.backend.run(plan: stackPlan, estimatedOutputBytes: clipEstimate * 2) { s in
                         Task { @MainActor in self.jobProgress = s }
                     }
                     stacked.append(stackedURL)
+                    // A/B intermediates served their purpose — keep peak disk low
+                    try? FileManager.default.removeItem(at: planA.outputURL)
+                    try? FileManager.default.removeItem(at: bURL)
                 }
 
                 // stitch (or move the single segment) next to the source
                 let out = JobPlan.outputURL(for: media.url, ext: "mp4", suffix: "sidebyside")
                 if stacked.count == 1 {
-                    try FileManager.default.copyItem(at: stacked[0], to: out)
+                    try FileManager.default.moveItem(at: stacked[0], to: out)
                 } else {
                     self.jobLabel = "Side-by-side: stitching \(stacked.count) segments…"
                     let list = AppDirs.testClips.appendingPathComponent("sbs_concat.txt")
                     try SideBySide.writeConcatList(segments: stacked, to: list)
+                    let stackedBytes = stacked.reduce(Int64(0)) {
+                        $0 + ((try? FileManager.default.attributesOfItem(atPath: $1.path)[.size] as? Int64) ?? 0)
+                    }
                     let concatPlan = JobPlan(kind: .utility("concat"),
                                              args: SideBySide.concatArgs(listFile: list, output: out),
                                              outputURL: out, totalFrames: totalFrames,
                                              sourceURL: media.url)
-                    _ = try await self.backend.run(plan: concatPlan, estimatedOutputBytes: 200_000_000) { s in
+                    _ = try await self.backend.run(plan: concatPlan, estimatedOutputBytes: stackedBytes) { s in
                         Task { @MainActor in self.jobProgress = s }
                     }
+                    try? FileManager.default.removeItem(at: list)
+                    for f in stacked { try? FileManager.default.removeItem(at: f) }
                 }
                 self.sbsOutput = out
                 self.recordStats(label: "Side-by-side", started: wallStart,
                                  frames: totalFrames, output: out)
-            } catch { self.surface(error) }
+            } catch {
+                self.surface(error)
+                // best-effort cleanup of this run's intermediates on failure too
+                if let files = try? FileManager.default.contentsOfDirectory(
+                    at: AppDirs.testClips, includingPropertiesForKeys: nil) {
+                    for f in files where f.lastPathComponent.hasPrefix("sbs_")
+                        || f.lastPathComponent.hasPrefix("clip_sbs_") {
+                        try? FileManager.default.removeItem(at: f)
+                    }
+                }
+            }
             self.jobLabel = nil
             self.jobProgress = nil
         }
@@ -443,7 +475,8 @@ final class AppModel: ObservableObject {
             }
             return media.estimatedOutputBytes(quality: encode.quality)
         case .testClipSource(_, let d), .testClipFiltered(_, let d):
-            return Int64(d * 2.5e6 / 8 * 2)
+            return Int64(d * encode.estimatedBytesPerSecond(width: media.width,
+                                                            height: media.height) * 1.5)
         case .utility:
             return 200_000_000
         }

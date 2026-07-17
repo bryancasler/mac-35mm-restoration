@@ -32,11 +32,13 @@ struct MediaInfo: Equatable {
     /// ~12x realtime measured for both backends (S2/S3).
     var estimatedFullRunSeconds: Double { durationSeconds / 12.0 }
 
-    /// Pre-test-clip size estimate: 2.5 Mbps measured at q:v 60 (S3), scaled
-    /// roughly linearly with the quality slider. Refined by test-clip ratio later.
+    /// Pre-test-clip size estimate. VideoToolbox bitrate is ~exponential in
+    /// -q:v near the top (q60 ≈ 2.5 Mbps, q100 ≈ 150 Mbps at 1440x1080 —
+    /// doubling every ~6.7 points). Refined by test-clip ratio once one exists.
     func estimatedOutputBytes(quality: Int) -> Int64 {
-        let mbps = 2.5 * Double(quality) / 60.0
-        return Int64(durationSeconds * mbps * 1_000_000 / 8)
+        let pixelScale = Double(width * height) / Double(1440 * 1080)
+        let mbps = 2.5 * pow(2.0, Double(quality - 60) / 6.7)
+        return Int64(durationSeconds * mbps * 1_000_000 / 8 * max(0.1, pixelScale))
     }
 }
 

@@ -45,6 +45,15 @@ struct EncodeSettings: Equatable {
         var label: String { self == .flac ? "FLAC (compress PCM)" : "Passthrough (copy)" }
     }
 
+    /// Disk-guard estimate: VideoToolbox bitrate grows ~exponentially near the
+    /// top of the -q:v scale (measured: q60 ≈ 2.5 Mbps, q100 ≈ 150 Mbps at
+    /// 1440x1080). Doubling every ~6.7 quality points fits both ends.
+    func estimatedBytesPerSecond(width: Int, height: Int) -> Double {
+        let pixelScale = Double(width * height) / Double(1440 * 1080)
+        let mbps = 2.5 * pow(2.0, Double(quality - 60) / 6.7)
+        return mbps * 1_000_000 / 8 * pixelScale
+    }
+
     var videoArgs: [String] {
         switch codec {
         case .hevcVideoToolbox:

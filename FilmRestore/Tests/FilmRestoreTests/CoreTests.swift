@@ -284,3 +284,29 @@ final class DebugReportTests: XCTestCase {
         XCTAssertTrue(r.contains("ffmpeg:"), "environment section present")
     }
 }
+
+final class SizeEstimateTests: XCTestCase {
+    func testQualityCurveMatchesMeasurements() {
+        let e60 = EncodeSettings()
+        // S3 measurement: q60 -> ~2.5 Mbps at 1440x1080
+        XCTAssertEqual(e60.estimatedBytesPerSecond(width: 1440, height: 1080),
+                       2.5e6 / 8, accuracy: 1000)
+        var e100 = EncodeSettings(); e100.quality = 100
+        // field measurement 2026-07-17: q100 10 s clip ≈ 184 MB -> ~18 MB/s
+        let q100 = e100.estimatedBytesPerSecond(width: 1440, height: 1080)
+        XCTAssertGreaterThan(q100, 15e6)
+        XCTAssertLessThan(q100, 30e6)
+    }
+
+    func testFullMovieEstimateScales() {
+        let m = MediaInfo(url: URL(fileURLWithPath: "/tmp/x.mkv"), width: 1440,
+                          height: 1080, fpsNum: 24000, fpsDen: 1001,
+                          durationSeconds: 5491.5, sizeBytes: 0, videoCodec: "h264",
+                          pixFmt: "yuv420p", colorRange: nil, colorSpace: nil,
+                          colorPrimaries: nil, colorTransfer: nil, audioTracks: [])
+        XCTAssertEqual(Double(m.estimatedOutputBytes(quality: 60)),
+                       5491.5 * 2.5e6 / 8, accuracy: 1e6)     // ~1.7 GB
+        XCTAssertGreaterThan(m.estimatedOutputBytes(quality: 100),
+                             80_000_000_000 / 8)              // q100 full movie > 10 GB
+    }
+}
