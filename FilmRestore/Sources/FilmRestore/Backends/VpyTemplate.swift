@@ -41,13 +41,17 @@ enum VpyTemplate {
     /// scriptsDir = directory containing deflicker.py / spotless.py (Bundle.module).
     /// `passes` (1–3) applies the whole filter chain repeatedly inside ONE graph —
     /// no intermediate encode, no generational loss.
+    /// `sideBySide`: output StackHorizontal(source, filtered) — both halves come
+    /// from the same decode and frame indices, so alignment is exact by
+    /// construction (no cross-stream timestamp sync anywhere).
     static func render(source: URL,
                        trimRange: Range<Int>?,
                        deflicker: DeflickerSettings,
                        scratch: ScratchSettings,
                        dirt: DirtSettings,
                        scriptsDir: URL,
-                       passes: Int = 1) -> String {
+                       passes: Int = 1,
+                       sideBySide: Bool = false) -> String {
         var lines: [String] = [
             "import sys",
             "import vapoursynth as vs",
@@ -57,6 +61,9 @@ enum VpyTemplate {
         ]
         if let r = trimRange {
             lines.append("clip = clip[\(r.lowerBound):\(r.upperBound)]")
+        }
+        if sideBySide {
+            lines.append("source_half = clip")
         }
 
         var body: [String] = []   // the chain, as a function body
@@ -97,6 +104,9 @@ enum VpyTemplate {
             lines.append("    return clip")
             lines.append("for _ in range(\(max(1, min(3, passes)))):")
             lines.append("    clip = _restore(clip)")
+        }
+        if sideBySide {
+            lines.append("clip = core.std.StackHorizontal([source_half, clip])")
         }
         lines.append("clip.set_output()")
         return lines.joined(separator: "\n") + "\n"

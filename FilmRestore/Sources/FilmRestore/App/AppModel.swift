@@ -90,6 +90,14 @@ final class AppModel: ObservableObject {
                 if VapourSynthBackend.scriptsDir == nil { errorMessage = "bundled scripts missing" }
                 return
             }
+            // A must use the same frame-exact bestsource trim as B — an ffmpeg
+            // -ss seek pairs by ms-rounded MKV timestamps and can land ±1 frame
+            // off, which the A/B frame-step makes obvious
+            let planAvs = VapourSynthBackend.testClipPlan(
+                media: media, deflicker: DeflickerSettings(enabled: false),
+                scratch: ScratchSettings(), dirt: DirtSettings(),
+                encode: encode, scriptsDir: scripts,
+                start: start, duration: clipDuration, label: "A_source")
             let planB = VapourSynthBackend.testClipPlan(
                 media: media, deflicker: deflicker, scratch: scratch, dirt: dirt,
                 encode: encode, scriptsDir: scripts,
@@ -100,7 +108,7 @@ final class AppModel: ObservableObject {
                 do {
                     self.jobLabel = "Rendering test clip A (source)…"
                     self.jobProgress = nil
-                    _ = try await backend.run(plan: planA, estimatedOutputBytes: 50_000_000) { s in
+                    _ = try await vsBackend.run(plan: planAvs, estimatedOutputBytes: 50_000_000) { s in
                         Task { @MainActor in self.jobProgress = s }
                     }
                     self.jobLabel = "Rendering test clip B (restoration chain)…"
@@ -108,7 +116,7 @@ final class AppModel: ObservableObject {
                     _ = try await vsBackend.run(plan: planB, estimatedOutputBytes: 50_000_000) { s in
                         Task { @MainActor in self.jobProgress = s }
                     }
-                    self.finishTestClip(a: planA.outputURL, b: planB.outputURL)
+                    self.finishTestClip(a: planAvs.outputURL, b: planB.outputURL)
                 } catch { self.surface(error) }
                 self.jobLabel = nil
                 self.jobProgress = nil
@@ -234,17 +242,15 @@ final class AppModel: ObservableObject {
                     totalFrames += frames
 
                     if self.needsVS, let scripts = VapourSynthBackend.scriptsDir {
-                        // filtered frames uncompressed via y4m; source decoded
-                        // directly; hstack + ONE encode
+                        // the .vpy outputs the stacked pair itself (exact frame
+                        // alignment by construction); ffmpeg encodes ONCE
                         let vpy = VpyTemplate.render(source: media.url,
                                                      trimRange: startFrame..<(startFrame + frames),
                                                      deflicker: self.deflicker, scratch: self.scratch,
                                                      dirt: self.dirt, scriptsDir: scripts,
-                                                     passes: self.passes)
+                                                     passes: self.passes, sideBySide: true)
                         let plan = ChainPlan(vpyContent: vpy,
-                                             ffmpegArgs: SideBySide.vsStackArgs(
-                                                source: media.url, start: alignedStart,
-                                                duration: seg.duration,
+                                             ffmpegArgs: SideBySide.vsEncodeArgs(
                                                 quality: self.encode.quality, output: stackedURL),
                                              outputURL: stackedURL, totalFrames: frames,
                                              sourceURL: media.url)

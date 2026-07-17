@@ -47,17 +47,14 @@ enum SideBySide {
                 "-progress", "pipe:1", output.path]
     }
 
-    /// Single-generation segment render, VS path: filtered frames arrive
-    /// uncompressed on stdin (y4m from vspipe), the source segment is decoded
-    /// directly from the original file — hstacked and encoded ONCE.
-    static func vsStackArgs(source: URL, start: Double, duration: Double,
-                            quality: Int, output: URL) -> [String] {
+    /// Single-generation segment render, VS path: the .vpy already outputs the
+    /// stacked pair (StackHorizontal — same decode, same frame indices, exact
+    /// alignment), so ffmpeg only encodes the y4m stream. No second input, no
+    /// timestamp sync: the MKV's millisecond-rounded PTS vs y4m's exact
+    /// 24000/1001 clock made hstack's pairing wobble ±1 frame.
+    static func vsEncodeArgs(quality: Int, output: URL) -> [String] {
         ["-nostdin", "-hide_banner", "-y",
-         "-f", "yuv4mpegpipe", "-i", "-",
-         "-ss", String(format: "%.6f", start),
-         "-t", String(format: "%.6f", duration),
-         "-i", source.path, "-an",
-         "-filter_complex", "[1:v]setpts=PTS-STARTPTS[a];[a][0:v]hstack=inputs=2:shortest=1",
+         "-f", "yuv4mpegpipe", "-i", "-", "-an",
          "-c:v", "hevc_videotoolbox", "-q:v", String(quality), "-tag:v", "hvc1",
          "-progress", "pipe:1", output.path]
     }

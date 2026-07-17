@@ -250,12 +250,22 @@ final class MultiPassAndSideBySideTests: XCTestCase {
         let joined = args.joined(separator: " ")
         XCTAssertTrue(joined.contains("[0:v]split[a][b];[b]deflicker=mode=pm:size=10,deflicker=mode=pm:size=10[f];[a][f]hstack=inputs=2:shortest=1"))
         XCTAssertEqual(joined.components(separatedBy: "-c:v").count - 1, 1, "exactly one encode")
-        // VS path: y4m stdin (uncompressed filtered frames) + direct source decode
-        let vs = SideBySide.vsStackArgs(source: URL(fileURLWithPath: "/tmp/s.mkv"),
-                                        start: 60, duration: 10, quality: 60,
-                                        output: URL(fileURLWithPath: "/tmp/o.mp4")).joined(separator: " ")
+        // VS path: vpy outputs the stacked pair; ffmpeg only encodes y4m
+        let vs = SideBySide.vsEncodeArgs(quality: 60,
+                                         output: URL(fileURLWithPath: "/tmp/o.mp4")).joined(separator: " ")
         XCTAssertTrue(vs.contains("-f yuv4mpegpipe -i -"))
-        XCTAssertTrue(vs.contains("[1:v]setpts=PTS-STARTPTS[a];[a][0:v]hstack=inputs=2:shortest=1"))
+        XCTAssertFalse(vs.contains("hstack"), "no cross-stream sync in the VS path")
+        // and the vpy stacks source+filtered from the SAME decode (exact alignment)
+        var sc = ScratchSettings(); sc.enabled = true
+        let vpy = VpyTemplate.render(source: URL(fileURLWithPath: "/tmp/s.mkv"),
+                                     trimRange: 100..<200, deflicker: DeflickerSettings(),
+                                     scratch: sc, dirt: DirtSettings(),
+                                     scriptsDir: URL(fileURLWithPath: "/tmp"), sideBySide: true)
+        XCTAssertTrue(vpy.contains("source_half = clip"))
+        XCTAssertTrue(vpy.contains("core.std.StackHorizontal([source_half, clip])"))
+        let trimIdx = vpy.range(of: "clip = clip[100:200]")!.lowerBound
+        let halfIdx = vpy.range(of: "source_half = clip")!.lowerBound
+        XCTAssertLessThan(trimIdx, halfIdx, "source half captured after trim, before filters")
         let list = FileManager.default.temporaryDirectory.appendingPathComponent("cl.txt")
         try SideBySide.writeConcatList(segments: [URL(fileURLWithPath: "/tmp/it's.mp4")], to: list)
         let body = try String(contentsOf: list, encoding: .utf8)
