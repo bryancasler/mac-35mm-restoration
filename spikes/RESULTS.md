@@ -8,8 +8,8 @@ Verdicts land here as each spike completes (M1). Pass/fail criteria are defined 
 | S1 | deflicker.py port matches ffmpeg vf_deflicker? | **PASS** (2026-07-17) | pm/am: 1438/1440 frames bit-identical, rest ≥69 dB; 298 fps; full chain 280 fps |
 | S2 | arm64 plugin stack provisions + benchmarks | **PASS** (2026-07-17) | bs 573 / +DeScratch 356 / +RemoveDirt 346 / +SpotLess 75 / full chain 302 fps |
 | S3 | vspipe→hevc_videotoolbox single-encode correct + fast | **PASS** (2026-07-17) | 212 fps (60 s), 255 fps sustained (5 min); all correctness checks clean |
-| S4 | progress parsing → reliable ETA both modes | pending | — |
-| S5 | toggle A/B player glitch-free | pending | — |
+| S4 | progress parsing → reliable ETA both modes | **PASS** (2026-07-17) | ETA monotonic both modes, 0 jitter violations; 6 parsing gotchas documented |
+| S5 | toggle A/B player glitch-free | **PASS*** (2026-07-17) | 164-line prototype compiles + runs; *perceptual check awaits user eyeball |
 
 ## S2 — arm64 plugin stack (2026-07-17): PASS
 
@@ -104,3 +104,49 @@ Findings:
   sync by construction (PCM in, both streams PTS 0).
 - Disk guard justified again: q:v 60 output is small (~1.7 GB/movie), but lossless
   intermediates are ~1 GB/min — the app must never write those uninstructed.
+
+## S4 — progress parsing → ETA (2026-07-17): PASS
+
+Script: `s4_progress/progress_spike.py` (+ `run.log`). Both modes emit `-progress pipe:1`
+blocks, `progress=end` seen, exits 0, ETA monotonic after warmup with zero jitter
+violations (>2 s upward).
+
+Phase 1 (ffmpeg deflicker → VT, total=1440 via ffprobe): 0.5 s→inf(warmup) · 1.5 s/f313→5.4 s
+· 3.0 s/f688→3.3 s · 4.1 s/f936→2.2 s · 5.1 s/f1187→1.1 s · 6.3 s/f1440→0.
+Phase 2 (vspipe|ffmpeg, app-supplied total): 0.9 s→inf · 1.9 s/f346→4.8 s · 3.5 s/f742→2.8 s
+· 4.5 s/f997→1.8 s · 5.5 s/f1244→0.8 s · 6.2 s/f1440→0. vspipe stderr `Frame: N/M`
+secondary signal parsed (12 lines).
+
+Gotchas (all handled; bake into M2 ProgressParser):
+1. **ffprobe on MKV:** stream-level `nb_frames` and `duration` are both N/A — total frames
+   must come from *format* duration × `avg_frame_rate`. Probe needs this fallback chain.
+2. `-progress` emits every **0.5 s** by default (`-stats_period`), first block has
+   `fps=0.0` → skip ETA until fps>0.
+3. `-progress pipe:1` works identically on piped y4m stdin (re-confirms ADR-9); final
+   `progress=end` block reliably carries `frame=total`.
+4. vspipe stderr mixes CR-delimited `Frame:` lines with LF-delimited status lines — split
+   on whichever of \r/\n comes first (naive CR-first splitting glues lines).
+5. vspipe's last `Frame:` update may be < total (rate-limited; saw 1342/1440) — treat
+   process exit as completion, never wait for `Frame: N/N`.
+6. vspipe's counter leads the encoder's (pipe buffering) — encoder `frame=` drives ETA;
+   vspipe signal is secondary (useful pre-encode, e.g. during bestsource indexing).
+
+## S5 — toggle A/B player prototype (2026-07-17): PASS (build+run; eyeball pending)
+
+`s5_ab_player/ABPlayer.swift` — 164 lines, AppKit+AVFoundation, per ADR-8: two muted
+AVPlayers / stacked AVPlayerLayers, KVO-gated `preroll(atRate:)`, single
+`setRate(1, time:, atHostTime:)` anchor shared by both, SPACE flips layer opacity only,
+LEFT/RIGHT zero-tolerance frame-step (1001/24000), P pause/resume with re-anchor.
+Compiles clean (`swiftc … -framework AVFoundation -framework AppKit`, exit 0); launched,
+window up, alive at 6 s, clean kill. **Glitch-free flip judgment = user eyeball**:
+`cd` repo root, run `spikes/s5_ab_player/abplayer` (build first per its README).
+A clip: `s5_ab_player/source60_preview.mp4`; B clip: `s3_pipeline/out60_preview.mp4`.
+
+AVFoundation gotchas (bake into M2 player):
+1. `preroll(atRate:)` silently fails unless item is `.readyToPlay` and rate 0 — gate
+   behind item-status KVO.
+2. Anchor host time must be ~100 ms in the future; anchoring at "now" drops first frames.
+3. Wrap opacity/layer changes in `CATransaction.setDisableActions(true)` or CA's implicit
+   0.25 s cross-fade reads as a glitch.
+4. After pause, snap both players to the nearest 1001/24000 boundary before stepping or
+   A/B can rest on different frames.
