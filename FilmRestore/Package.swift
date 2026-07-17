@@ -8,6 +8,7 @@ let package = Package(
         .executableTarget(
             name: "FilmRestore",
             path: "Sources/FilmRestore",
+            resources: [.copy("Resources/scripts")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(

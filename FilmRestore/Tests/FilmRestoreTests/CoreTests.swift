@@ -135,3 +135,63 @@ final class ProbeParseTests: XCTestCase {
         XCTAssertEqual(info.audioTracks.first?.codec, "pcm_s16be")
     }
 }
+
+final class VpyTemplateTests: XCTestCase {
+    private let scripts = URL(fileURLWithPath: "/tmp/scripts")
+    private var src: URL { URL(fileURLWithPath: "/tmp/My \"Scan\" [Encode].mkv") }
+
+    func testFullChainOrderIsFixed() {
+        var scratch = ScratchSettings(); scratch.enabled = true
+        var dirt = DirtSettings(); dirt.enabled = true
+        let vpy = VpyTemplate.render(source: src, trimRange: nil,
+                                     deflicker: DeflickerSettings(), scratch: scratch,
+                                     dirt: dirt, scriptsDir: scripts)
+        // validated order: deflicker → scratch → dirt (CLAUDE.md, do not re-derive)
+        let d = vpy.range(of: "deflicker(clip")!.lowerBound
+        let s = vpy.range(of: "descratch.DeScratch")!.lowerBound
+        let r = vpy.range(of: "RestoreMotionBlocks")!.lowerBound
+        XCTAssertLessThan(d, s)
+        XCTAssertLessThan(s, r)
+        XCTAssertTrue(vpy.contains("core.bs.VideoSource"))
+        XCTAssertTrue(vpy.hasSuffix("clip.set_output()\n"))
+    }
+
+    func testQuotedPathEscaping() {
+        let vpy = VpyTemplate.render(source: src, trimRange: 100..<200,
+                                     deflicker: DeflickerSettings(),
+                                     scratch: ScratchSettings(), dirt: DirtSettings(),
+                                     scriptsDir: scripts)
+        XCTAssertTrue(vpy.contains(#"My \"Scan\" [Encode].mkv"#))
+        XCTAssertTrue(vpy.contains("clip = clip[100:200]"))
+    }
+
+    func testDisabledStagesAbsent() {
+        let vpy = VpyTemplate.render(source: src, trimRange: nil,
+                                     deflicker: DeflickerSettings(),
+                                     scratch: ScratchSettings(), dirt: DirtSettings(),
+                                     scriptsDir: scripts)
+        XCTAssertFalse(vpy.contains("DeScratch"))
+        XCTAssertFalse(vpy.contains("RestoreMotionBlocks"))
+        XCTAssertFalse(vpy.contains("spotless"))
+        XCTAssertTrue(vpy.contains("deflicker(clip"), "deflicker on by default")
+    }
+
+    func testSpotLessEngineAndMarkMode() {
+        var scratch = ScratchSettings(); scratch.enabled = true; scratch.markOnly = true
+        scratch.maxwidth = 4 // even input must be coerced odd (plugin constraint)
+        var dirt = DirtSettings(); dirt.enabled = true; dirt.engine = .spotLess; dirt.radT = 2
+        let vpy = VpyTemplate.render(source: src, trimRange: nil,
+                                     deflicker: DeflickerSettings(), scratch: scratch,
+                                     dirt: dirt, scriptsDir: scripts)
+        XCTAssertTrue(vpy.contains("mark=True"))
+        XCTAssertTrue(vpy.contains("maxwidth=5"))
+        XCTAssertTrue(vpy.contains("spotless(clip, radT=2"))
+        XCTAssertFalse(vpy.contains("RestoreMotionBlocks"))
+    }
+
+    func testBackendRouting() {
+        XCTAssertFalse(VpyTemplate.needsVapourSynth(scratch: ScratchSettings(), dirt: DirtSettings()))
+        var s = ScratchSettings(); s.enabled = true
+        XCTAssertTrue(VpyTemplate.needsVapourSynth(scratch: s, dirt: DirtSettings()))
+    }
+}

@@ -10,6 +10,11 @@ enum Entry {
             SelfTest.run(path: CommandLine.arguments[idx + 1])
             return
         }
+        if let idx = CommandLine.arguments.firstIndex(of: "--selftest-vs"),
+           CommandLine.arguments.count > idx + 1 {
+            SelfTest.runVS(path: CommandLine.arguments[idx + 1])
+            return
+        }
         // Headless provisioning (verification/CI use; the GUI path adds the
         // per-download approval sheet — running this flag IS the approval).
         if CommandLine.arguments.contains("--provision") {
@@ -42,9 +47,11 @@ enum Entry {
                 print("plugin \(present ? "OK " : "MISSING") \(dylib)")
             }
             print("plugin \(s.descratch ? "OK " : "MISSING") \(PluginSpec.descratchDylib)")
+            let scripts = VapourSynthBackend.scriptsDir
+            print("scripts:     \(scripts?.path ?? "MISSING (Bundle.module)")")
             let r = Doctor.run()
             print("doctor: \(r.ok ? "PASS" : "FAIL") — \(r.detail)")
-            exit(r.ok && s.vsStackOK ? 0 : 1)
+            exit(r.ok && s.vsStackOK && scripts != nil ? 0 : 1)
         }
         FilmRestoreApp.main()
     }

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
     @State private var showOpenPanel = false
+    @State private var showQueuePanel = false
     @State private var showSetup = false
 
     var body: some View {
@@ -74,9 +75,20 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 probeCard(media)
+                HStack {
+                    Text("Preset:")
+                    ForEach(Preset.all) { preset in
+                        Button(preset.name) { model.apply(preset: preset) }
+                            .help(preset.note)
+                    }
+                    Spacer()
+                }
                 GroupBox("Deflicker") { deflickerControls }
+                GroupBox("Scratch removal (DeScratch)") { scratchControls }
+                GroupBox("Dirt removal") { dirtControls }
                 GroupBox("Encode") { encodeControls }
                 GroupBox("Test clip") { testClipControls(media) }
+                GroupBox("Queue") { queueControls }
                 actions(media)
                 if let out = model.lastOutput {
                     Label {
@@ -131,6 +143,60 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var scratchControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Remove vertical scratches", isOn: $model.scratch.enabled)
+            Group {
+                HStack {
+                    Stepper("Detection threshold (mindif): \(model.scratch.mindif)",
+                            value: $model.scratch.mindif, in: 1...255)
+                    Stepper("Min length: \(model.scratch.minlen)",
+                            value: $model.scratch.minlen, in: 3...1000, step: 10)
+                }
+                HStack {
+                    Stepper("Max angle: \(model.scratch.maxangle, specifier: "%.0f")°",
+                            value: $model.scratch.maxangle, in: 0...15)
+                    Stepper("Max width: \(model.scratch.oddMaxwidth)",
+                            value: $model.scratch.maxwidth, in: 1...15, step: 2)
+                }
+                Toggle("Mark detected scratches (preview only, doesn't fix)",
+                       isOn: $model.scratch.markOnly)
+            }.disabled(!model.scratch.enabled)
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var dirtControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Remove dust & dirt", isOn: $model.dirt.enabled)
+            Group {
+                Picker("Engine", selection: $model.dirt.engine) {
+                    ForEach(DirtSettings.Engine.allCases) { Text($0.label).tag($0) }
+                }
+                switch model.dirt.engine {
+                case .removeDirt:
+                    HStack {
+                        Stepper("Scene threshold: \(model.dirt.gmthreshold)%",
+                                value: $model.dirt.gmthreshold, in: 0...100, step: 5)
+                        Stepper("Motion threshold: \(model.dirt.mthreshold)",
+                                value: $model.dirt.mthreshold, in: 0...500, step: 20)
+                    }
+                case .spotLess:
+                    HStack {
+                        Stepper("Strength (thsad): \(model.dirt.thsad)",
+                                value: $model.dirt.thsad, in: 1000...30000, step: 1000)
+                        Stepper("Temporal radius: \(model.dirt.radT)",
+                                value: $model.dirt.radT, in: 1...3)
+                    }
+                    Text("~3x realtime (vs ~14x for RemoveDirt)").font(.caption).foregroundStyle(.secondary)
+                }
+            }.disabled(!model.dirt.enabled)
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var encodeControls: some View {
         VStack(alignment: .leading, spacing: 8) {
             Picker("Video", selection: $model.encode.codec) {
@@ -169,11 +235,45 @@ struct ContentView: View {
                     .keyboardShortcut("t")
             }
             if model.abClipA != nil {
-                Button("Open A/B player") { model.showABPlayer = true }
+                HStack {
+                    Button("Open A/B player") { model.showABPlayer = true }
+                    Button("Pin B as A") { model.pinBAsA() }
+                        .help("Keep the current filtered clip as the A side, then change settings and re-render to compare two variants")
+                }
             }
         }
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var queueControls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button("Add files…") { showQueuePanel = true }
+                    .disabled(model.isBusy)
+                if !model.queue.isEmpty {
+                    Button("Run queue (\(model.queue.count))") { model.runQueue() }
+                        .disabled(model.isBusy)
+                }
+            }
+            ForEach(model.queue, id: \.self) { url in
+                HStack {
+                    Text(url.lastPathComponent).lineLimit(1)
+                    Spacer()
+                    Button { model.queue.removeAll { $0 == url } } label: {
+                        Image(systemName: "xmark.circle")
+                    }.buttonStyle(.plain)
+                }.font(.caption)
+            }
+            ForEach(model.queueResults, id: \.self) { Text($0).font(.caption) }
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fileImporter(isPresented: $showQueuePanel,
+                      allowedContentTypes: [.movie, .mpeg4Movie, .item],
+                      allowsMultipleSelection: true) {
+            if case .success(let urls) = $0 { model.enqueue(urls: urls) }
+        }
     }
 
     private func actions(_ media: MediaInfo) -> some View {

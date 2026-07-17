@@ -6,25 +6,61 @@ Native SwiftUI shelling out to Homebrew-installed ffmpeg and VapourSynth. All FO
 
 Fixed, validated processing order: **deflicker → scratch removal → dirt removal → encode**.
 
-## Status
+## Setup walkthrough
 
-M1 (spike validation) complete — all five spikes pass; M2 (the app, ffmpeg-only) in
-progress. See:
+1. **Homebrew tools** (the app's Setup screen shows these too, with live re-check):
+   ```
+   brew install ffmpeg                       # required — phase-1 features
+   brew install vapoursynth vapoursynth-bestsource meson ninja   # for scratch/dirt removal
+   ```
+2. **Build & launch the app:**
+   ```
+   cd FilmRestore
+   ./scripts/make-app.sh        # → dist/FilmRestore.app (ad-hoc signed)
+   open dist/FilmRestore.app
+   ```
+   (Development: `swift build && .build/debug/FilmRestore`.)
+3. **Restoration plugins:** open Setup (stethoscope icon) → *Download plugins…* —
+   the app fetches four sha256-pinned prebuilt plugins (MVTools, RemoveDirt,
+   TemporalMedian, zsmooth) into `~/Library/Application Support/FilmRestore/plugins`
+   after you approve the exact URLs, and builds DeScratch from source (~2 min).
+   Homebrew's tree is never touched. Then *Run smoke test* — it renders 10 frames
+   through every plugin to prove the stack.
 
-- [docs/ADR.md](docs/ADR.md) — architecture decision record (incl. VapourBox prior-art verdict)
-- [docs/PLAN.md](docs/PLAN.md) — milestones M0–M5, spike list, verification criteria
-- [spikes/RESULTS.md](spikes/RESULTS.md) — spike verdicts with numbers
-- [FilmRestore/](FilmRestore/) — the app (SwiftPM package)
+## Using it
 
-## Build & run
+1. Drag a scan in (MKV/MP4/MOV). The probe card shows resolution, duration, codec,
+   audio, and estimated output size + runtime.
+2. Pick a preset (35mm scan / 8mm home movie / VHS capture) or set the three filter
+   groups by hand. "Mark detected scratches" renders a preview with scratches
+   highlighted instead of fixed — good for tuning `mindif`/`minlen`.
+3. **Render a test clip** (60 s, default from 10:00) → the A/B player opens:
+   SPACE flips source↔filtered instantly, P pauses, arrow keys frame-step.
+   *Pin B as A* keeps the current render so you can compare two settings variants.
+4. **Restore full video** — output lands next to the source as `NAME.restored.mkv`
+   (never overwrites; the source is opened read-only). Progress shows fps + ETA;
+   sleep is prevented; every job writes a log to `~/Library/Logs/FilmRestore/`.
+5. Batch: add files to the Queue and run them all with the current settings.
 
+Measured on an M4 Pro against a real 1440x1080 35mm scan: the full restoration
+chain runs ~250 fps (≈10x realtime) — a 90-minute film in ~9 minutes.
+
+## Distribution builds (optional)
+
+`./scripts/make-app.sh "Developer ID Application: Your Name (TEAMID)"` signs with
+your identity; then notarize:
 ```
-cd FilmRestore
-swift build && .build/debug/FilmRestore          # GUI
-.build/debug/FilmRestore --selftest <file.mkv>   # headless M2 verification
-swift test                                        # unit tests
+ditto -c -k --keepParent dist/FilmRestore.app dist/FilmRestore.zip
+xcrun notarytool submit dist/FilmRestore.zip --keychain-profile <profile> --wait
+xcrun stapler staple dist/FilmRestore.app
 ```
+Nothing is bundled (ADR-7), so notarization has no embedded-dylib complications.
 
-Requires `brew install ffmpeg` (VapourSynth stack comes in with M3/M4).
+## Project docs
+
+- [docs/ADR.md](docs/ADR.md) — architecture decisions (incl. VapourBox prior-art verdict)
+- [docs/PLAN.md](docs/PLAN.md) — milestones M0–M5 + verification criteria
+- [spikes/RESULTS.md](spikes/RESULTS.md) — validation spike verdicts with numbers
+- [CLAUDE.md](CLAUDE.md) / [STATE.md](STATE.md) — repo-based process management
 
 License: GPL-3.0 (DeScratch/RemoveDirt are GPL; see ADR-11).
