@@ -5,7 +5,7 @@ Verdicts land here as each spike completes (M1). Pass/fail criteria are defined 
 
 | Spike | Question | Verdict | Numbers |
 |---|---|---|---|
-| S1 | deflicker.py port matches ffmpeg vf_deflicker? | pending | — |
+| S1 | deflicker.py port matches ffmpeg vf_deflicker? | **PASS** (2026-07-17) | pm/am: 1438/1440 frames bit-identical, rest ≥69 dB; 298 fps; full chain 280 fps |
 | S2 | arm64 plugin stack provisions + benchmarks | **PASS** (2026-07-17) | bs 573 / +DeScratch 356 / +RemoveDirt 346 / +SpotLess 75 / full chain 302 fps |
 | S3 | vspipe→hevc_videotoolbox single-encode correct + fast | pending | — |
 | S4 | progress parsing → reliable ETA both modes | pending | — |
@@ -44,3 +44,35 @@ Findings:
   thereafter; decode then 573 fps). M2/M3 UX must show an indexing progress state on
   first open of a large file.
 - No MVTools freeze observed (v24 pinned). Sustained multi-minute runs come in S3.
+
+## S1 — deflicker.py fidelity (2026-07-17): PASS
+
+Port: `s1_deflicker/deflicker.py` — faithful reimplementation of
+`libavfilter/vf_deflicker.c` (release/8.1): forward-looking window of `size` luma means
+(EOF pads by repeating the last mean, matching ffmpeg's flush), gain applied to luma only
+with C truncation semantics (per-frame `std.Lut`), chroma untouched. All 7 modes.
+
+Validation on the 1440-frame FFV1 test clip (frames 14000–15439 of the real scan),
+per-frame framemd5 ffmpeg-vs-vspipe (decode alignment first verified bit-identical):
+
+| Mode | Bit-identical frames | Residual |
+|---|---|---|
+| pm (default, size=10) | 1438/1440 | 2 frames at 71.2/69.3 dB PSNR-Y, chroma inf — ±1 LSB float32-vs-double noise |
+| am | 1438/1440 | same character |
+| median | n/a | **ffmpeg's median mode is broken upstream** (see below) |
+
+Findings:
+- **PASS at the "visually identical" bar and effectively at bit-exactness.** ADR-3
+  primary topology confirmed; double-pipe and FFV1-intermediate fallbacks not needed.
+- **ffmpeg bug found:** vf_deflicker's median comparator does `round(aa - bb)` on the
+  *pointers* (both release/8.1 and master) — the window is never actually sorted, so
+  ffmpeg's "median" returns garbage. Our port implements a true median (correct by
+  construction); ffmpeg-match validation is meaningless for this mode. Flagged for
+  upstream report.
+- Gotcha for anyone comparing outputs: ffmpeg's `psnr` filter syncs by PTS — mkv-vs-y4m
+  timestamp rounding misaligns frames and reports a bogus ~41 dB. Use `-f framemd5`
+  (sequential) or fifos into one psnr process.
+- Throughput: deflicker.py alone 298 fps; **full restoration chain
+  (deflicker → DeScratch → RemoveDirt) 280 fps = 11.7x realtime** — VS filtering will
+  not be the pipeline bottleneck (VideoToolbox encode runs ~12x).
+- Watch: per-frame `std.Lut` node creation is the cost driver; fine at 1440x1080.

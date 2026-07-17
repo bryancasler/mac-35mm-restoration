@@ -3,18 +3,19 @@
 <!-- Hard cap: 60 lines. Prune on every update: durable facts → ADR/RESULTS; stale notes → delete. -->
 
 ## Where we are
-- **Milestone:** M1 in progress. S2 PASS (see spikes/RESULTS.md — full chain 302 fps,
-  RemoveDirt default holds). S1 is next.
+- **Milestone:** M1 in progress. S2 PASS, S1 PASS (spikes/RESULTS.md — deflicker port
+  bit-exact 1438/1440; full VS chain 280 fps). S3 next.
 - Last updated: 2026-07-17
 
 ## Next actions (in order)
-1. S1 — port vf_deflicker to VS Python, validate vs ffmpeg output (top risk)
-2. S3 — vspipe|ffmpeg single-encode end-to-end
-3. S4 progress parsing, S5 A/B player prototype (low risk, can parallelize via sub-agents)
+1. S3 — vspipe|ffmpeg single-encode end-to-end (reuse s1_deflicker/clip60.mkv; delete
+   it once S3 concludes — disk is tight)
+2. S4 progress parsing, S5 A/B player prototype (low risk, can parallelize via sub-agents)
 
 ## Blockers / open questions
-- None. User decisions on record: prebuilt plugin provisioning; VS-Python deflicker
-  port preferred (fallbacks: double-pipe, then FFV1 intermediate) — see ADR-3, ADR-6.
+- **Disk nearly full (~2.8 GB free after cleanup).** Lossless intermediates filled it
+  once during S1. Full-movie outputs need tens of GB — user should free space before
+  real runs; app's disk guard (ADR-10) is clearly justified.
 
 ## Environment facts (verified 2026-07-17)
 - ffmpeg 8.1.2 (Homebrew), Xcode 26.6, macOS 26.5.1, M4 Pro. VapourSynth R77 + bestsource
