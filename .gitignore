@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 *.mp4
 spikes/s5_ab_player/abplayer
+.build/
+.swiftpm/
