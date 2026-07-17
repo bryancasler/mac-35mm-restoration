@@ -44,6 +44,8 @@ enum VpyTemplate {
     /// `sideBySide`: output StackHorizontal(source, filtered) — both halves come
     /// from the same decode and frame indices, so alignment is exact by
     /// construction (no cross-stream timestamp sync anywhere).
+    /// `diffColumn`: append a third column visualizing |source − filtered| on
+    /// luma, amplified 8× (black = identical), neutral chroma.
     static func render(source: URL,
                        trimRange: Range<Int>?,
                        deflicker: DeflickerSettings,
@@ -51,7 +53,8 @@ enum VpyTemplate {
                        dirt: DirtSettings,
                        scriptsDir: URL,
                        passes: Int = 1,
-                       sideBySide: Bool = false) -> String {
+                       sideBySide: Bool = false,
+                       diffColumn: Bool = false) -> String {
         var lines: [String] = [
             "import sys",
             "import vapoursynth as vs",
@@ -106,7 +109,14 @@ enum VpyTemplate {
             lines.append("    clip = _restore(clip)")
         }
         if sideBySide {
-            lines.append("clip = core.std.StackHorizontal([source_half, clip])")
+            if diffColumn {
+                lines.append("_neutral = str(1 << (clip.format.bits_per_sample - 1))")
+                lines.append("_diff = core.std.Expr([source_half, clip], "
+                           + "[\"x y - abs 8 *\", _neutral, _neutral])")
+                lines.append("clip = core.std.StackHorizontal([source_half, clip, _diff])")
+            } else {
+                lines.append("clip = core.std.StackHorizontal([source_half, clip])")
+            }
         }
         lines.append("clip.set_output()")
         return lines.joined(separator: "\n") + "\n"

@@ -330,3 +330,29 @@ final class SizeEstimateTests: XCTestCase {
                              80_000_000_000 / 8)              // q100 full movie > 10 GB
     }
 }
+
+final class DiffColumnTests: XCTestCase {
+    func testVpyDiffColumn() {
+        var sc = ScratchSettings(); sc.enabled = true
+        let vpy = VpyTemplate.render(source: URL(fileURLWithPath: "/tmp/s.mkv"),
+                                     trimRange: 0..<100, deflicker: DeflickerSettings(),
+                                     scratch: sc, dirt: DirtSettings(),
+                                     scriptsDir: URL(fileURLWithPath: "/tmp"),
+                                     sideBySide: true, diffColumn: true)
+        XCTAssertTrue(vpy.contains(#"["x y - abs 8 *", _neutral, _neutral]"#))
+        XCTAssertTrue(vpy.contains("StackHorizontal([source_half, clip, _diff])"))
+    }
+
+    func testOneShotDiffGraph() {
+        let joined = SideBySide.oneShotArgs(source: URL(fileURLWithPath: "/tmp/s.mkv"),
+                                            start: 0, duration: 10,
+                                            filterChain: "deflicker=mode=pm:size=10",
+                                            quality: 60,
+                                            output: URL(fileURLWithPath: "/tmp/o.mp4"),
+                                            diffColumn: true).joined(separator: " ")
+        XCTAssertTrue(joined.contains("split=3[a][b][c]"))
+        XCTAssertTrue(joined.contains("blend=all_mode=difference"))
+        XCTAssertTrue(joined.contains("hstack=inputs=3:shortest=1"))
+        XCTAssertEqual(joined.components(separatedBy: "-c:v").count - 1, 1, "still one encode")
+    }
+}

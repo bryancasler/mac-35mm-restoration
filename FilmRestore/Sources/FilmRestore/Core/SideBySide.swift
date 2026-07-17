@@ -36,13 +36,20 @@ enum SideBySide {
     /// user's quality. No intermediate encodes (source left, restored right —
     /// no drawtext in brew ffmpeg).
     static func oneShotArgs(source: URL, start: Double, duration: Double,
-                            filterChain: String, quality: Int, output: URL) -> [String] {
+                            filterChain: String, quality: Int, output: URL,
+                            diffColumn: Bool = false) -> [String] {
         let chain = filterChain.isEmpty ? "null" : filterChain
+        // diff column: |src − filtered| on luma, 8× amplified, neutral chroma
+        let graph = diffColumn
+            ? "[0:v]split=3[a][b][c];[b]\(chain),split[f][fd];"
+              + "[c][fd]blend=all_mode=difference,lutyuv=y='min(val*8,255)':u=128:v=128[d];"
+              + "[a][f][d]hstack=inputs=3:shortest=1"
+            : "[0:v]split[a][b];[b]\(chain)[f];[a][f]hstack=inputs=2:shortest=1"
         return ["-nostdin", "-hide_banner", "-y",
                 "-ss", String(format: "%.6f", start),
                 "-t", String(format: "%.6f", duration),
                 "-i", source.path, "-an",
-                "-filter_complex", "[0:v]split[a][b];[b]\(chain)[f];[a][f]hstack=inputs=2:shortest=1",
+                "-filter_complex", graph,
                 "-c:v", "hevc_videotoolbox", "-q:v", String(quality), "-tag:v", "hvc1",
                 "-progress", "pipe:1", output.path]
     }

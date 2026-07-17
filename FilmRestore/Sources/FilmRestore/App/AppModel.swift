@@ -17,6 +17,7 @@ final class AppModel: ObservableObject {
     @Published var passes = 1                  // 1–3: run the whole chain N times (single encode)
     @Published var sbsStartString = "10:00"    // side-by-side custom mode
     @Published var sbsLengthString = "60"
+    @Published var sbsDiffColumn = false       // third column: |src − restored| ×8
     @Published var sbsOutput: URL?
     @Published var lastStats: String?          // completion stats line
 
@@ -209,11 +210,12 @@ final class AppModel: ObservableObject {
                                            duration: min(len, media.durationSeconds))]
         }
 
-        // Pre-flight disk check: stacked segments (double width) + the final
-        // reel — no A/B intermediates exist anymore (single-generation renders).
+        // Pre-flight disk check: stacked segments (2 or 3 columns wide) + the
+        // final reel — no A/B intermediates exist (single-generation renders).
+        let columns = Double(sbsDiffColumn ? 3 : 2)
         let perSecond = encode.estimatedBytesPerSecond(width: media.width, height: media.height)
         let totalSeconds = segments.reduce(0.0) { $0 + $1.duration }
-        let needed = Int64(perSecond * totalSeconds * 2 * 2)
+        let needed = Int64(perSecond * totalSeconds * columns * 2)
         if !DiskGuard.hasRoom(estimatedBytes: needed, destination: media.url) {
             let f = ByteCountFormatter()
             errorMessage = "Side-by-side at quality \(encode.quality) needs roughly "
@@ -235,7 +237,7 @@ final class AppModel: ObservableObject {
                     // land on the identical frame
                     let startFrame = Int((seg.start * media.fps).rounded())
                     let alignedStart = Double(startFrame) * Double(media.fpsDen) / Double(media.fpsNum)
-                    let segEstimate = Int64(perSecond * seg.duration * 2 * 1.5)
+                    let segEstimate = Int64(perSecond * seg.duration * columns * 1.5)
                     let stackedURL = AppDirs.testClips.appendingPathComponent("sbs_\(i)_stacked.mp4")
                     self.jobLabel = "Side-by-side\(tag) (\(self.passes)×)…"
                     self.jobProgress = nil
@@ -248,7 +250,8 @@ final class AppModel: ObservableObject {
                                                      trimRange: startFrame..<(startFrame + frames),
                                                      deflicker: self.deflicker, scratch: self.scratch,
                                                      dirt: self.dirt, scriptsDir: scripts,
-                                                     passes: self.passes, sideBySide: true)
+                                                     passes: self.passes, sideBySide: true,
+                                                     diffColumn: self.sbsDiffColumn)
                         let plan = ChainPlan(vpyContent: vpy,
                                              ffmpegArgs: SideBySide.vsEncodeArgs(
                                                 quality: self.encode.quality, output: stackedURL),
@@ -265,7 +268,8 @@ final class AppModel: ObservableObject {
                                            args: SideBySide.oneShotArgs(
                                               source: media.url, start: alignedStart,
                                               duration: seg.duration, filterChain: chain,
-                                              quality: self.encode.quality, output: stackedURL),
+                                              quality: self.encode.quality, output: stackedURL,
+                                              diffColumn: self.sbsDiffColumn),
                                            outputURL: stackedURL, totalFrames: frames,
                                            sourceURL: media.url)
                         _ = try await self.backend.run(plan: plan, estimatedOutputBytes: segEstimate) { s in

@@ -275,6 +275,9 @@ struct ContentView: View {
                     model.renderSideBySide(quick: true)
                 }.disabled(model.isBusy)
             }
+            Toggle("Add difference column (highlights what changed — black = identical)",
+                   isOn: $model.sbsDiffColumn)
+                .disabled(model.isBusy)
             if let out = model.sbsOutput {
                 HStack {
                     Label(out.lastPathComponent, systemImage: "checkmark.circle.fill")
