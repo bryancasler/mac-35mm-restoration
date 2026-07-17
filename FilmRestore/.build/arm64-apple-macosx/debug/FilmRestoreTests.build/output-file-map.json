@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/4Site/Documents/GitHub/mac-35mm-restoration/FilmRestore/.build/arm64-apple-macosx/debug/FilmRestoreTests.build/primary.swiftdeps"
+  },
+  "/Users/4Site/Documents/GitHub/mac-35mm-restoration/FilmRestore/Tests/FilmRestoreTests/CoreTests.swift": {
+    "dependencies": "/Users/4Site/Documents/GitHub/mac-35mm-restoration/FilmRestore/.build/arm64-apple-macosx/debug/FilmRestoreTests.build/CoreTests.d",
+    "object": "/Users/4Site/Documents/GitHub/mac-35mm-restoration/FilmRestore/.build/arm64-apple-macosx/debug/FilmRestoreTests.build/CoreTests.swift.o",
+    "swiftmodule": "/Users/4Site/Documents/GitHub/mac-35mm-restoration/FilmRestore/.build/arm64-apple-macosx/debug/FilmRestoreTests.build/CoreTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/4Site/Documents/GitHub/mac-35mm-restoration/FilmRestore/.build/arm64-apple-macosx/debug/FilmRestoreTests.build/CoreTests.swiftdeps",
+    "diagnostics": "/Users/4Site/Documents/GitHub/mac-35mm-restoration/FilmRestore/.build/arm64-apple-macosx/debug/FilmRestoreTests.build/CoreTests.dia"
+  }
+}
