@@ -69,6 +69,11 @@ Findings:
   ffmpeg's "median" returns garbage. Our port implements a true median (correct by
   construction); ffmpeg-match validation is meaningless for this mode. Flagged for
   upstream report.
+  *2026-07-17 update:* root-caused and fixed — the broken comparator makes AV_QSORT
+  apply a fixed value-independent permutation (size=5: elements 2↔3 swapped), so
+  "median" returns an arbitrary window slot; the ~25% match rate was coincidence.
+  One-line patch (`FFDIFFSIGN(*aa, *bb)`) validated against a patched master build;
+  repro + ready-to-send patch in docs/upstream/ffmpeg-deflicker-median.md.
 - Gotcha for anyone comparing outputs: ffmpeg's `psnr` filter syncs by PTS — mkv-vs-y4m
   timestamp rounding misaligns frames and reports a bogus ~41 dB. Use `-f framemd5`
   (sequential) or fifos into one psnr process.

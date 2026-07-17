@@ -16,7 +16,9 @@
    probe card, test-clip render, A/B player, full run). Carry in: RESULTS.md gotcha
    lists from S3 (MP4-not-MKV test clips), S4 (ProgressParser rules, ffprobe fallback
    chain), S5 (AVFoundation anchor/preroll/CATransaction rules).
-4. LICENSE: fetch canonical GPL-3.0 text (deferred from M0).
+4. **User:** send prepared ffmpeg patch to ffmpeg-devel (one command + Gmail app
+   password — steps in docs/upstream/ffmpeg-deflicker-median.md).
+5. LICENSE: fetch canonical GPL-3.0 text (deferred from M0).
 
 ## Blockers / open questions
 - Disk nearly full (~2 GB free) — S1 lossless intermediates filled it once; full-movie

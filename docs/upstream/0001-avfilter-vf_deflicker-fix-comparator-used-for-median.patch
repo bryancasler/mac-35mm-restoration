@@ -1,0 +1,44 @@
+From 231f69b894550edbf9332d65a6c0bd035222d691 Mon Sep 17 00:00:00 2001
+From: Bryan Casler <bryan.casler@gmail.com>
+Date: Fri, 17 Jul 2026 16:03:18 -0400
+Subject: [PATCH] avfilter/vf_deflicker: fix comparator used for median mode
+
+The qsort comparator compared the element pointers themselves
+(aa - bb) instead of the pointed-to values, so AV_QSORT never
+actually sorted the luminance window and median mode returned an
+arbitrary element of the unsorted window instead of its median.
+
+Reproduce with a clip whose per-frame average luminance repeats
+40, 200, 120, 80: with size=5 every window's median is 80 or 120,
+but the filter's lavfi.deflicker.new_luminance metadata reports
+80, 40, 200, 120 (an unsorted window slot):
+
+  ffmpeg -f lavfi -i "color=c=black:s=64x64:r=25:d=0.8,format=gray,\
+geq=lum='if(eq(mod(N\,4)\,0)\,40\,if(eq(mod(N\,4)\,1)\,200\,\
+if(eq(mod(N\,4)\,2)\,120\,80)))'" \
+    -vf deflicker=size=5:mode=median,metadata=mode=print -f null -
+
+After this change the reported new_luminance matches the true
+window median for every frame; all other modes are unaffected.
+
+Signed-off-by: Bryan Casler <bryan.casler@gmail.com>
+---
+ libavfilter/vf_deflicker.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libavfilter/vf_deflicker.c b/libavfilter/vf_deflicker.c
+index 38f838f..22b25d0 100644
+--- a/libavfilter/vf_deflicker.c
++++ b/libavfilter/vf_deflicker.c
+@@ -298,7 +298,7 @@ static void get_pm_factor(AVFilterContext *ctx, float *f)
+ static int comparef(const void *a, const void *b)
+ {
+     const float *aa = a, *bb = b;
+-    return round(aa - bb);
++    return FFDIFFSIGN(*aa, *bb);
+ }
+ 
+ static void get_median_factor(AVFilterContext *ctx, float *f)
+-- 
+2.50.1 (Apple Git-155)
+
