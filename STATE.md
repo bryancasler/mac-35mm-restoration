@@ -3,24 +3,22 @@
 <!-- Hard cap: 60 lines. Prune on every update: durable facts → ADR/RESULTS; stale notes → delete. -->
 
 ## Where we are
-- **Milestone: M2 code-complete** (2026-07-17). App builds (SwiftPM, macOS 15+),
-  14 unit tests green, headless selftest **ALL PASS on the real scan**: probe exact,
-  A/B clips render, full 91.5-min restore at 250 fps / 10.4x with monotonic ETA
-  (1043 samples), output frame count exact (131,665), colorimetry restated, source
-  checksum untouched, per-job log written. M1 complete (all 5 spikes PASS).
+- **Milestone: M3 done** (2026-07-17). M2 selftest ALL PASS on the real scan (full
+  restore 250 fps / 10.4x, ETA monotonic, source untouched). M3 verified from-zero:
+  detection → sha256-verified provisioning → DeScratch source build → doctor smoke
+  PASS. Setup UI (checklist + approval sheet + doctor pane) behind toolbar button;
+  headless flags: --selftest <file>, --doctor, --provision.
 - Last updated: 2026-07-17
 
 ## Next actions (in order)
 1. **User:** GUI eyeball — `cd FilmRestore && swift build && .build/debug/FilmRestore`,
-   drag the scan in, render a test clip, check the A/B flip + frame-step. (This
-   supersedes the S5 prototype eyeball — the app embeds the same player.)
+   drag the scan in, render a test clip, check the A/B flip + frame-step; peek at the
+   Setup sheet (stethoscope toolbar icon).
 2. **User:** send prepared ffmpeg patch to ffmpeg-devel (one command + Gmail app
    password — steps in docs/upstream/ffmpeg-deflicker-median.md).
-3. M3 — dependency detection + guided setup + plugin provisioning screen
-   (docs/PLAN.md M3; provisioning recipe proven in spikes/s2_plugins/provision.sh
-   + build-descratch.sh).
-4. M4 — VS backend: .vpy templating (chain proven in spikes/s3_pipeline/chain60.vpy),
-   deflicker.py + spotless.py as app resources, DeScratch mark-mode preview.
+3. M4 — VS backend: .vpy templating (chain proven in spikes/s3_pipeline/chain60.vpy),
+   deflicker.py + spotless.py as app resources, vspipe|ffmpeg backend, scratch/dirt
+   controls, DeScratch mark-mode preview, engine pickers (RemoveDirt default, ADR-12).
 
 ## Blockers / open questions
 - None. Disk freed (23 GB at last check). LICENSE done (canonical GPL-3.0).

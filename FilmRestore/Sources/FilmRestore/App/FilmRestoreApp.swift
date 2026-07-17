@@ -10,6 +10,42 @@ enum Entry {
             SelfTest.run(path: CommandLine.arguments[idx + 1])
             return
         }
+        // Headless provisioning (verification/CI use; the GUI path adds the
+        // per-download approval sheet — running this flag IS the approval).
+        if CommandLine.arguments.contains("--provision") {
+            let p = PluginProvisioner()
+            p.onStatus = { print($0) }
+            let sema = DispatchSemaphore(value: 0)
+            // Task.detached: an inherited-context Task would land on the main
+            // actor here (@main entry) and deadlock against sema.wait()
+            Task.detached {
+                do {
+                    try await p.provisionPrebuilts()
+                    try await p.buildDeScratch()
+                } catch {
+                    print("PROVISION FAILED: \(error.localizedDescription)")
+                    exit(1)
+                }
+                sema.signal()
+            }
+            sema.wait()
+            print("PROVISION OK")
+            exit(0)
+        }
+        if CommandLine.arguments.contains("--doctor") {
+            let s = DependencyDetector.detect()
+            print("ffmpeg:      \(s.ffmpeg)")
+            print("vapoursynth: \(s.vapoursynth)")
+            print("bestsource:  \(s.bestsource)")
+            print("meson/ninja: \(s.mesonNinja)")
+            for (dylib, present) in s.plugins.sorted(by: { $0.key < $1.key }) {
+                print("plugin \(present ? "OK " : "MISSING") \(dylib)")
+            }
+            print("plugin \(s.descratch ? "OK " : "MISSING") \(PluginSpec.descratchDylib)")
+            let r = Doctor.run()
+            print("doctor: \(r.ok ? "PASS" : "FAIL") — \(r.detail)")
+            exit(r.ok && s.vsStackOK ? 0 : 1)
+        }
         FilmRestoreApp.main()
     }
 }

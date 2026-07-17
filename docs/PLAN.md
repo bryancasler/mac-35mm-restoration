@@ -41,7 +41,11 @@ seek) → **toggle A/B player** → full run with progress/ETA/sleep-prevention,
 guard, per-job log. Internals: `JobPlan` + `ProcessRunner` (async stderr/`-progress`
 parsing) + `FFmpegBackend`.
 
-**M3 — Dependency detection + guided setup.**
+**M3 — Dependency detection + guided setup. ✅ done 2026-07-17** — verified from-zero:
+plugins dir wiped → detection reports missing → app's provisioner re-downloads
+(sha256-verified) + rebuilds DeScratch → doctor 10-frame smoke PASS. (brew-side
+detection verified by state inspection; a literal `brew uninstall vapoursynth` walk
+was skipped — detection covers it and the reinstall cost buys nothing.)
 Detect: `/opt/homebrew/bin/{ffmpeg,vspipe}` + versions; `vapoursynth-bestsource` present;
 plugin dir state. Setup screen: copy-paste brew commands with live re-check; then the
 **plugin provisioning step** (user-approved, sha256-pinned downloads from

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
     @State private var showOpenPanel = false
+    @State private var showSetup = false
 
     var body: some View {
         Group {
@@ -14,6 +15,20 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 560, minHeight: 480)
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button { showSetup = true } label: {
+                    Label("Setup", systemImage: "stethoscope")
+                }.help("Dependencies & plugin setup")
+            }
+        }
+        .sheet(isPresented: $showSetup) {
+            VStack(spacing: 0) {
+                SetupView()
+                HStack { Spacer(); Button("Close") { showSetup = false }.keyboardShortcut(.escape) }
+                    .padding(10)
+            }
+        }
         .alert("Error", isPresented: .init(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } })
