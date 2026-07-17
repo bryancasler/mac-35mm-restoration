@@ -18,8 +18,13 @@ ffmpeg -i INPUT.mkv -map 0 -vf "deflicker=mode=pm:size=10" \
 
 ## Milestones
 
-**M0 — Planning docs into repo (0.5 day).** Commit `docs/ADR.md` + `docs/PLAN.md` and
-`spikes/` skeleton.
+**M0 — Planning docs + process system into repo (0.5 day). ✅ done 2026-07-17**
+Commit `docs/ADR.md` + `docs/PLAN.md`, `spikes/` skeleton, and the **repo-based
+process-management system**: `CLAUDE.md` (session protocol, file roles, sub-agent
+briefing template) + `STATE.md` (living state, 60-line cap). Rationale: conversation
+context compacts and sessions end; the .md files are the durable source of truth, and
+sub-agents get briefed by file pointer instead of pasted context. Protocol details
+live in [CLAUDE.md](../CLAUDE.md).
 
 **M1 — Spike scripts (no UI).** Prove/decide the risky bits with throwaway bash/python in
 `spikes/` (details below). Exit criteria: S1–S3 have written verdicts (numbers + chosen
