@@ -121,6 +121,12 @@ differences than side-by-side. Frame-step/seek uses zero-tolerance `seek(to:)`. 
 sync perfect by construction; do NOT use free-running dual players for side-by-side.
 Verified sufficient for local files; documented AVPlayer sync problems are HLS-specific.
 
+*Amendment 2026-07-17 (S3 finding):* AVPlayer/QuickTime cannot open MKV. Full-run output
+stays MKV, but **test clips for the A/B player must be video-only MP4 (hvc1)** — render
+them as MP4 directly (they're muted in the player anyway, so dropping audio costs
+nothing). Verified: remuxing the HEVC stream into MP4 with `-tag:v hvc1` carries the tag
+and hw-decodes cleanly; in MKV the FourCC tag is a no-op (Matroska uses CodecID).
+
 ## ADR-9: Progress/ETA = parse ffmpeg `-progress pipe:1` + app-supplied frame total
 
 Verified: `-progress` emits machine-readable `frame=/fps=/speed=/out_time_us=` blocks ~1/s
