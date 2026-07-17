@@ -21,7 +21,9 @@
    controls, DeScratch mark-mode preview, engine pickers (RemoveDirt default, ADR-12).
 
 ## Blockers / open questions
-- None. Disk freed (23 GB at last check). LICENSE done (canonical GPL-3.0).
+- VS full-run ran at ~80 fps vs ~255 expected — likely Low Power Mode throttling;
+  parked with check procedure + isolation matrix in docs/perf-vs-fullrun.md.
+- Disk freed (23 GB at last check). LICENSE done (canonical GPL-3.0).
 
 ## Environment facts (verified 2026-07-17)
 - ffmpeg 8.1.2 (Homebrew), Xcode 26.6 (Swift 6.3.3), macOS 26.5.1, M4 Pro.

@@ -45,6 +45,9 @@ two agents never write the same file concurrently.
   into Homebrew's site-packages.
 - Commit at natural checkpoints; .md updates ride in the same commit as the work
   they describe.
+- **DMG stays fresh:** any chunk that changes `FilmRestore/Sources/`, `Package.swift`,
+  or `FilmRestore/scripts/` must run `FilmRestore/scripts/make-dmg.sh` and include the
+  regenerated `release/FilmRestore.dmg` (unsigned, ~1.5 MB) in the same commit.
 - **Push authorization (standing, granted 2026-07-17):** push directly to
   origin/main whenever a chunk of work is completed — no need to ask. A "chunk"
   is a committed unit with its .md updates in place (a spike verdict, a milestone

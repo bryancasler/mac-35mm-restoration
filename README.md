@@ -13,10 +13,12 @@ Fixed, validated processing order: **deflicker → scratch removal → dirt remo
    brew install ffmpeg                       # required — phase-1 features
    brew install vapoursynth vapoursynth-bestsource meson ninja   # for scratch/dirt removal
    ```
-2. **Build & launch the app:**
+2. **Get the app** — either grab the prebuilt unsigned image committed at
+   [release/FilmRestore.dmg](release/FilmRestore.dmg) (right-click → Open on first
+   launch to pass Gatekeeper; regenerated on every app change), or build it yourself:
    ```
    cd FilmRestore
-   ./scripts/make-app.sh        # → dist/FilmRestore.app (ad-hoc signed)
+   ./scripts/make-dmg.sh        # → release/FilmRestore.dmg (via dist/FilmRestore.app)
    open dist/FilmRestore.app
    ```
    (Development: `swift build && .build/debug/FilmRestore`.)
