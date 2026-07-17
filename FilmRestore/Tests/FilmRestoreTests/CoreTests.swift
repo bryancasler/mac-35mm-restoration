@@ -168,7 +168,7 @@ final class VpyTemplateTests: XCTestCase {
     func testDisabledStagesAbsent() {
         let vpy = VpyTemplate.render(source: src, trimRange: nil,
                                      deflicker: DeflickerSettings(),
-                                     scratch: ScratchSettings(), dirt: DirtSettings(),
+                                     scratch: .off, dirt: .off,
                                      scriptsDir: scripts)
         XCTAssertFalse(vpy.contains("DeScratch"))
         XCTAssertFalse(vpy.contains("RestoreMotionBlocks"))
@@ -189,10 +189,18 @@ final class VpyTemplateTests: XCTestCase {
         XCTAssertFalse(vpy.contains("RestoreMotionBlocks"))
     }
 
+    func testDefaultsEnableFullChain() {
+        XCTAssertTrue(ScratchSettings().enabled)
+        XCTAssertTrue(DirtSettings().enabled)
+        XCTAssertTrue(DeflickerSettings().enabled)
+        XCTAssertTrue(VpyTemplate.needsVapourSynth(scratch: ScratchSettings(),
+                                                   dirt: DirtSettings()))
+    }
+
     func testBackendRouting() {
-        XCTAssertFalse(VpyTemplate.needsVapourSynth(scratch: ScratchSettings(), dirt: DirtSettings()))
+        XCTAssertFalse(VpyTemplate.needsVapourSynth(scratch: .off, dirt: .off))
         var s = ScratchSettings(); s.enabled = true
-        XCTAssertTrue(VpyTemplate.needsVapourSynth(scratch: s, dirt: DirtSettings()))
+        XCTAssertTrue(VpyTemplate.needsVapourSynth(scratch: s, dirt: .off))
     }
 }
 

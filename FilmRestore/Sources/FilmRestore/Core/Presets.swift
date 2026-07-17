@@ -15,12 +15,8 @@ struct Preset: Identifiable {
             name: "35mm scan",
             note: "Deflicker + vertical scratch removal + dirt removal — the full validated chain",
             deflicker: DeflickerSettings(),               // pm / size 10
-            scratch: {
-                var s = ScratchSettings(); s.enabled = true; return s
-            }(),
-            dirt: {
-                var d = DirtSettings(); d.enabled = true; return d   // RemoveDirt defaults
-            }()),
+            scratch: ScratchSettings(),                   // on (default)
+            dirt: DirtSettings()),                        // on, RemoveDirt (default)
         Preset(
             id: "8mm",
             name: "8mm home movie",
@@ -28,16 +24,14 @@ struct Preset: Identifiable {
             deflicker: {
                 var d = DeflickerSettings(); d.size = 19; return d   // small-gauge flicker is worse
             }(),
-            scratch: ScratchSettings(),
-            dirt: {
-                var d = DirtSettings(); d.enabled = true; return d
-            }()),
+            scratch: .off,      // 8mm damage is rarely straight vertical lines
+            dirt: DirtSettings()),
         Preset(
             id: "vhs",
             name: "VHS capture",
             note: "Deflicker only — film dirt/scratch filters would eat tape artifacts",
             deflicker: DeflickerSettings(),
-            scratch: ScratchSettings(),
-            dirt: DirtSettings()),
+            scratch: .off,
+            dirt: .off),
     ]
 }

@@ -96,7 +96,7 @@ final class AppModel: ObservableObject {
             // off, which the A/B frame-step makes obvious
             let planAvs = VapourSynthBackend.testClipPlan(
                 media: media, deflicker: DeflickerSettings(enabled: false),
-                scratch: ScratchSettings(), dirt: DirtSettings(),
+                scratch: .off, dirt: .off,
                 encode: encode, scriptsDir: scripts,
                 start: start, duration: clipDuration, label: "A_source")
             let planB = VapourSynthBackend.testClipPlan(

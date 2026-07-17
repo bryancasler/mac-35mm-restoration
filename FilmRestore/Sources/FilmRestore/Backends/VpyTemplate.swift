@@ -3,7 +3,12 @@ import Foundation
 /// M4 restoration-filter settings (validated pipeline order is fixed:
 /// deflicker → scratch → dirt; each stage independently toggleable).
 struct ScratchSettings: Equatable {
-    var enabled = false
+    var enabled = true      // on by default (2026-07-17): the point of the app
+
+    static var off: ScratchSettings {
+        var s = ScratchSettings(); s.enabled = false; return s
+    }
+
     var mindif = 5          // 1...255, detection threshold
     var asym = 10
     var maxgap = 8          // was 3 — real scratches break up; measured 2026-07-17
@@ -17,7 +22,12 @@ struct ScratchSettings: Equatable {
 }
 
 struct DirtSettings: Equatable {
-    var enabled = false
+    var enabled = true      // on by default (2026-07-17)
+
+    static var off: DirtSettings {
+        var d = DirtSettings(); d.enabled = false; return d
+    }
+
     var engine: Engine = .removeDirt
 
     // RemoveDirt strength (default engine, ADR-12)
