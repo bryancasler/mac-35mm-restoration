@@ -28,24 +28,18 @@ enum Entry {
             let segs = [SideBySide.Segment(start: 60, duration: 3),
                         SideBySide.Segment(start: 120, duration: 3)]
             for (i, seg) in segs.enumerated() {
-                let a = JobPlan.testClip(media: media, deflicker: DeflickerSettings(),
-                                         encode: EncodeSettings(), start: seg.start,
-                                         duration: seg.duration, filtered: false,
-                                         outputName: "sbs_st_\(i)_A.mp4")
-                let b = JobPlan.testClip(media: media, deflicker: DeflickerSettings(),
-                                         encode: EncodeSettings(), start: seg.start,
-                                         duration: seg.duration, filtered: true,
-                                         passes: 2, outputName: "sbs_st_\(i)_B.mp4")
+                // single-generation: one decode, split, filter (2 passes), hstack, one encode
                 let stackURL = AppDirs.testClips.appendingPathComponent("sbs_st_\(i).mp4")
-                let stack = JobPlan(kind: .utility("hstack"),
-                                    args: SideBySide.hstackArgs(a: a.outputURL, b: b.outputURL,
-                                                                quality: 60, output: stackURL),
+                let chain = JobPlan.filterChain(DeflickerSettings(), passes: 2)
+                let stack = JobPlan(kind: .utility("sbs_oneshot"),
+                                    args: SideBySide.oneShotArgs(source: url, start: seg.start,
+                                                                 duration: seg.duration,
+                                                                 filterChain: chain, quality: 60,
+                                                                 output: stackURL),
                                     outputURL: stackURL,
                                     totalFrames: Int(3 * media.fps), sourceURL: url)
                 Task.detached {
                     do {
-                        _ = try await backend.run(plan: a, estimatedOutputBytes: 10_000_000) { _ in }
-                        _ = try await backend.run(plan: b, estimatedOutputBytes: 10_000_000) { _ in }
                         _ = try await backend.run(plan: stack, estimatedOutputBytes: 20_000_000) { _ in }
                         stacked.append(stackURL)
                     } catch { print("FAIL segment \(i): \(error.localizedDescription)") }

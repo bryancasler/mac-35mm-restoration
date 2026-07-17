@@ -241,11 +241,21 @@ final class MultiPassAndSideBySideTests: XCTestCase {
         XCTAssertLessThanOrEqual(segs[0].start + segs[0].duration, 30)
     }
 
-    func testHstackAndConcatArgs() throws {
-        let args = SideBySide.hstackArgs(a: URL(fileURLWithPath: "/tmp/a.mp4"),
-                                         b: URL(fileURLWithPath: "/tmp/b.mp4"),
-                                         quality: 60, output: URL(fileURLWithPath: "/tmp/o.mp4"))
-        XCTAssertTrue(args.joined(separator: " ").contains("[0:v][1:v]hstack=inputs=2"))
+    func testOneShotAndConcatArgs() throws {
+        // ffmpeg-only path: single generation — split source, filter one branch
+        let args = SideBySide.oneShotArgs(source: URL(fileURLWithPath: "/tmp/s.mkv"),
+                                          start: 60, duration: 10,
+                                          filterChain: "deflicker=mode=pm:size=10,deflicker=mode=pm:size=10",
+                                          quality: 60, output: URL(fileURLWithPath: "/tmp/o.mp4"))
+        let joined = args.joined(separator: " ")
+        XCTAssertTrue(joined.contains("[0:v]split[a][b];[b]deflicker=mode=pm:size=10,deflicker=mode=pm:size=10[f];[a][f]hstack=inputs=2:shortest=1"))
+        XCTAssertEqual(joined.components(separatedBy: "-c:v").count - 1, 1, "exactly one encode")
+        // VS path: y4m stdin (uncompressed filtered frames) + direct source decode
+        let vs = SideBySide.vsStackArgs(source: URL(fileURLWithPath: "/tmp/s.mkv"),
+                                        start: 60, duration: 10, quality: 60,
+                                        output: URL(fileURLWithPath: "/tmp/o.mp4")).joined(separator: " ")
+        XCTAssertTrue(vs.contains("-f yuv4mpegpipe -i -"))
+        XCTAssertTrue(vs.contains("[1:v]setpts=PTS-STARTPTS[a];[a][0:v]hstack=inputs=2:shortest=1"))
         let list = FileManager.default.temporaryDirectory.appendingPathComponent("cl.txt")
         try SideBySide.writeConcatList(segments: [URL(fileURLWithPath: "/tmp/it's.mp4")], to: list)
         let body = try String(contentsOf: list, encoding: .utf8)

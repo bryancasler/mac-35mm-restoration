@@ -201,11 +201,11 @@ final class AppModel: ObservableObject {
                                            duration: min(len, media.durationSeconds))]
         }
 
-        // Pre-flight disk check: intermediates cost ~4 clip-streams per segment
-        // (A + B + double-width stacked) before cleanup, plus the final reel.
+        // Pre-flight disk check: stacked segments (double width) + the final
+        // reel — no A/B intermediates exist anymore (single-generation renders).
         let perSecond = encode.estimatedBytesPerSecond(width: media.width, height: media.height)
         let totalSeconds = segments.reduce(0.0) { $0 + $1.duration }
-        let needed = Int64(perSecond * totalSeconds * 4)
+        let needed = Int64(perSecond * totalSeconds * 2 * 2)
         if !DiskGuard.hasRoom(estimatedBytes: needed, destination: media.url) {
             let f = ByteCountFormatter()
             errorMessage = "Side-by-side at quality \(encode.quality) needs roughly "
@@ -222,58 +222,51 @@ final class AppModel: ObservableObject {
                 var totalFrames = 0
                 for (i, seg) in segments.enumerated() {
                     let tag = segments.count > 1 ? " \(i + 1)/\(segments.count)" : ""
-                    let clipEstimate = Int64(perSecond * seg.duration * 1.5)
-                    // A: source segment
-                    self.jobLabel = "Side-by-side\(tag): source segment…"
+                    let frames = Int((seg.duration * media.fps).rounded())
+                    // frame-aligned start so the ffmpeg seek and the VS trim
+                    // land on the identical frame
+                    let startFrame = Int((seg.start * media.fps).rounded())
+                    let alignedStart = Double(startFrame) * Double(media.fpsDen) / Double(media.fpsNum)
+                    let segEstimate = Int64(perSecond * seg.duration * 2 * 1.5)
+                    let stackedURL = AppDirs.testClips.appendingPathComponent("sbs_\(i)_stacked.mp4")
+                    self.jobLabel = "Side-by-side\(tag) (\(self.passes)×)…"
                     self.jobProgress = nil
-                    let planA = JobPlan.testClip(media: media, deflicker: self.deflicker,
-                                                 encode: self.encode, start: seg.start,
-                                                 duration: seg.duration, filtered: false,
-                                                 outputName: "sbs_\(i)_A.mp4")
-                    _ = try await self.backend.run(plan: planA, estimatedOutputBytes: clipEstimate) { s in
-                        Task { @MainActor in self.jobProgress = s }
-                    }
-                    // B: restored segment (passes applied)
-                    self.jobLabel = "Side-by-side\(tag): restored segment (\(self.passes)×)…"
-                    self.jobProgress = nil
-                    let bURL: URL
+                    totalFrames += frames
+
                     if self.needsVS, let scripts = VapourSynthBackend.scriptsDir {
-                        let planB = VapourSynthBackend.testClipPlan(
-                            media: media, deflicker: self.deflicker, scratch: self.scratch,
-                            dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
-                            start: seg.start, duration: seg.duration,
-                            label: "sbs_\(i)_B", passes: self.passes)
-                        bURL = try await self.vsBackend.run(plan: planB, estimatedOutputBytes: clipEstimate) { s in
+                        // filtered frames uncompressed via y4m; source decoded
+                        // directly; hstack + ONE encode
+                        let vpy = VpyTemplate.render(source: media.url,
+                                                     trimRange: startFrame..<(startFrame + frames),
+                                                     deflicker: self.deflicker, scratch: self.scratch,
+                                                     dirt: self.dirt, scriptsDir: scripts,
+                                                     passes: self.passes)
+                        let plan = ChainPlan(vpyContent: vpy,
+                                             ffmpegArgs: SideBySide.vsStackArgs(
+                                                source: media.url, start: alignedStart,
+                                                duration: seg.duration,
+                                                quality: self.encode.quality, output: stackedURL),
+                                             outputURL: stackedURL, totalFrames: frames,
+                                             sourceURL: media.url)
+                        _ = try await self.vsBackend.run(plan: plan, estimatedOutputBytes: segEstimate) { s in
                             Task { @MainActor in self.jobProgress = s }
                         }
                     } else {
-                        let planB = JobPlan.testClip(media: media, deflicker: self.deflicker,
-                                                     encode: self.encode, start: seg.start,
-                                                     duration: seg.duration, filtered: true,
-                                                     passes: self.passes,
-                                                     outputName: "sbs_\(i)_B.mp4")
-                        bURL = try await self.backend.run(plan: planB, estimatedOutputBytes: clipEstimate) { s in
+                        // one decode, split, filter one branch, hstack, ONE encode
+                        let chain = self.deflicker.enabled
+                            ? JobPlan.filterChain(self.deflicker, passes: self.passes) : ""
+                        let plan = JobPlan(kind: .utility("sbs_oneshot"),
+                                           args: SideBySide.oneShotArgs(
+                                              source: media.url, start: alignedStart,
+                                              duration: seg.duration, filterChain: chain,
+                                              quality: self.encode.quality, output: stackedURL),
+                                           outputURL: stackedURL, totalFrames: frames,
+                                           sourceURL: media.url)
+                        _ = try await self.backend.run(plan: plan, estimatedOutputBytes: segEstimate) { s in
                             Task { @MainActor in self.jobProgress = s }
                         }
                     }
-                    // stack the pair
-                    self.jobLabel = "Side-by-side\(tag): stacking…"
-                    let stackedURL = AppDirs.testClips.appendingPathComponent("sbs_\(i)_stacked.mp4")
-                    let frames = Int((seg.duration * media.fps).rounded())
-                    totalFrames += frames
-                    let stackPlan = JobPlan(kind: .utility("hstack"),
-                                            args: SideBySide.hstackArgs(a: planA.outputURL, b: bURL,
-                                                                        quality: self.encode.quality,
-                                                                        output: stackedURL),
-                                            outputURL: stackedURL, totalFrames: frames,
-                                            sourceURL: media.url)
-                    _ = try await self.backend.run(plan: stackPlan, estimatedOutputBytes: clipEstimate * 2) { s in
-                        Task { @MainActor in self.jobProgress = s }
-                    }
                     stacked.append(stackedURL)
-                    // A/B intermediates served their purpose — keep peak disk low
-                    try? FileManager.default.removeItem(at: planA.outputURL)
-                    try? FileManager.default.removeItem(at: bURL)
                 }
 
                 // stitch (or move the single segment) next to the source

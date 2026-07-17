@@ -31,12 +31,33 @@ enum SideBySide {
         }
     }
 
-    /// ffmpeg args: A + B → hstacked comparison segment (no drawtext in brew
-    /// ffmpeg — layout is by convention: source left, restored right).
-    static func hstackArgs(a: URL, b: URL, quality: Int, output: URL) -> [String] {
+    /// Single-generation segment render, ffmpeg-only path: decode the source
+    /// segment ONCE, split it, filter one branch, hstack, encode ONCE at the
+    /// user's quality. No intermediate encodes (source left, restored right —
+    /// no drawtext in brew ffmpeg).
+    static func oneShotArgs(source: URL, start: Double, duration: Double,
+                            filterChain: String, quality: Int, output: URL) -> [String] {
+        let chain = filterChain.isEmpty ? "null" : filterChain
+        return ["-nostdin", "-hide_banner", "-y",
+                "-ss", String(format: "%.6f", start),
+                "-t", String(format: "%.6f", duration),
+                "-i", source.path, "-an",
+                "-filter_complex", "[0:v]split[a][b];[b]\(chain)[f];[a][f]hstack=inputs=2:shortest=1",
+                "-c:v", "hevc_videotoolbox", "-q:v", String(quality), "-tag:v", "hvc1",
+                "-progress", "pipe:1", output.path]
+    }
+
+    /// Single-generation segment render, VS path: filtered frames arrive
+    /// uncompressed on stdin (y4m from vspipe), the source segment is decoded
+    /// directly from the original file — hstacked and encoded ONCE.
+    static func vsStackArgs(source: URL, start: Double, duration: Double,
+                            quality: Int, output: URL) -> [String] {
         ["-nostdin", "-hide_banner", "-y",
-         "-i", a.path, "-i", b.path,
-         "-filter_complex", "[0:v][1:v]hstack=inputs=2",
+         "-f", "yuv4mpegpipe", "-i", "-",
+         "-ss", String(format: "%.6f", start),
+         "-t", String(format: "%.6f", duration),
+         "-i", source.path, "-an",
+         "-filter_complex", "[1:v]setpts=PTS-STARTPTS[a];[a][0:v]hstack=inputs=2:shortest=1",
          "-c:v", "hevc_videotoolbox", "-q:v", String(quality), "-tag:v", "hvc1",
          "-progress", "pipe:1", output.path]
     }
