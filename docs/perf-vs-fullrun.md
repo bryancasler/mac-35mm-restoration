@@ -1,5 +1,17 @@
 # Open question: VS full-run throughput (parked 2026-07-17)
 
+**Update (same day, end of run):** speed degraded *progressively* — 80 fps → 65 →
+39 fps (1.6×) by frame 127k; total wall ~45 min. `pmset -g` mid-run showed
+`powermode 0` (Low Power Mode OFF). A constant throttle can't explain monotonic
+degradation; something grows with runtime. **New hypothesis 0: deflicker.py's
+per-frame `std.Lut` node creation** (one transient node per frame → 131k over the
+run; spikes only ever ran 1.4k–7.2k frames, S1 even noted "per-frame std.Lut node
+creation is the cost driver — fine at 1440x1080"). Fix sketch: replace per-frame Lut
+with a per-frame `std.Expr`-free approach that reuses one node — e.g. quantize gain
+to a small LUT cache (gains repeat at float32 granularity) or apply gain via
+`std.Levels`-style cached nodes keyed by rounded gain. Then re-run the S1 fidelity
+check. The battery-saver hypothesis below is retained only for completeness.
+
 During the M4 `--selftest-vs` full-movie run, throughput sat at ~80 fps (3.3×
 realtime) versus 250–280 fps (≈10×) in spikes S1–S3, with vspipe at ~1.3 cores
 (spikes: ~6.7) and ffmpeg nearly idle. Output correct, only slow. Parked for later

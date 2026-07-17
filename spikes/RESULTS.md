@@ -155,3 +155,16 @@ AVFoundation gotchas (bake into M2 player):
    0.25 s cross-fade reads as a glitch.
 4. After pause, snap both players to the nearest 1001/24000 boundary before stepping or
    A/B can rest on different frames.
+
+## M4 verification — `--selftest-vs` on the real scan (2026-07-17): ALL PASS
+
+7/7: full-chain 60 s clip (1439 frames) ✓ · mark-mode variant ✓ · full-movie
+single-encode run completed ✓ · frame count exact (131,665) ✓ · FLAC audio present ✓ ·
+audio sync Δ0.000 s ✓ · colorimetry restated ✓.
+
+Caveat (parked, docs/perf-vs-fullrun.md): full-movie throughput **degraded
+progressively** — 80 fps at start → 65 mid-run → 39 fps at 97% (1.6x realtime), total
+~45 min vs ~9 min extrapolated from spikes. Monotonic degradation on a run 18–90×
+longer than any spike window points at accumulation (prime suspect: deflicker.py's
+per-frame std.Lut node creation — 131k transient nodes), not a constant throttle;
+`pmset` showed Low Power Mode OFF mid-run. Output correctness unaffected.

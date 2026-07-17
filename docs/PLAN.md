@@ -54,7 +54,7 @@ A "doctor" pane runs a 10-frame smoke .vpy through vspipe to prove the stack end
 *Provisioning is bigger than "show brew commands" because the restoration plugins aren't in
 Homebrew — this is the meat of M3.*
 
-**M4 — Restoration filters + single-encode pipeline.**
+**M4 — Restoration filters + single-encode pipeline. ✅ done 2026-07-17** — `--selftest-vs` ALL PASS on the real scan (7/7; audio Δ0.000 s); throughput question parked in perf-vs-fullrun.md.
 `.vpy` template engine (bestsource → deflicker.py → DeScratch → RemoveDirt/SpotLess, each
 behind its toggle); vspipe|ffmpeg backend with colorimetry restatement; DeScratch **mark
 mode** preview (its native `mark=True` debug highlight) as a test-clip variant; scratch
@@ -62,7 +62,7 @@ controls (mindif, minlen, maxangle), dirt engine + strength mapping (RemoveDirt:
 gmthreshold/mthreshold; SpotLess: thsad/radT). Test-clip A/B now compares any two
 setting-variants, not just source-vs-output.
 
-**M5 — Polish.**
+**M5 — Polish. ✅ done 2026-07-17** (presets, queue, icon, .app+DMG in repo; notarization deferred until distribution matters). Post-M5 additions same day: side-by-side comparison (custom + 6×10 s quick-sample reel), 2×/3× multi-pass (single-encode), job stats.
 Presets ("35mm scan", "8mm home movie", "VHS capture"), job queue, app icon, notarized
 release build (Developer ID + notarytool; straightforward since nothing is bundled), README
 with setup walkthrough.
