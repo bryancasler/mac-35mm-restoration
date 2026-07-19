@@ -410,3 +410,35 @@ final class MaskCleanTests: XCTestCase {
         XCTAssertTrue(preview.contains("preview_mask=True"))
     }
 }
+
+final class AnimationSafetyTests: XCTestCase {
+    private let scripts = URL(fileURLWithPath: "/tmp/scripts")
+    private var src: URL { URL(fileURLWithPath: "/tmp/scan.mkv") }
+
+    func testScratchPolarityRendersModeY() {
+        var sc = ScratchSettings()
+        XCTAssertEqual(sc.polarity, .both, "app default covers both polarities")
+        sc.polarity = .bright
+        let vpy = VpyTemplate.render(source: src, trimRange: nil,
+                                     deflicker: DeflickerSettings(), scratch: sc,
+                                     dirt: .off, scriptsDir: scripts)
+        XCTAssertTrue(vpy.contains("modey=2"), "bright-only shields dark ink lines")
+    }
+
+    func testAnimatedPresetIsInkSafe() {
+        let anim = Preset.all.first { $0.id == "anim" }!
+        XCTAssertEqual(anim.scratch.polarity, .bright)
+        XCTAssertTrue(anim.dirt.mcProtectDark)
+        XCTAssertEqual(anim.dirt.engine, .maskClean)
+    }
+
+    func testMLProtectDarkRenders() {
+        var dirt = DirtSettings(); dirt.mcProtectDark = true
+        let vpy = VpyTemplate.render(source: src, trimRange: nil,
+                                     deflicker: DeflickerSettings(), scratch: .off,
+                                     dirt: dirt, scriptsDir: scripts,
+                                     mlMaskPath: "/tmp/mask.mkv")
+        XCTAssertTrue(vpy.contains("ml_protect_dark=True"))
+        XCTAssertTrue(vpy.contains("ml_mask=_ml"))
+    }
+}

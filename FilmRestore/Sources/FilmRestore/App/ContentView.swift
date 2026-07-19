@@ -170,6 +170,9 @@ struct ContentView: View {
                     Stepper("Max width: \(model.scratch.oddMaxwidth)",
                             value: $model.scratch.maxwidth, in: 1...15, step: 2)
                 }
+                Picker("Polarity", selection: $model.scratch.polarity) {
+                    ForEach(ScratchSettings.ScratchPolarity.allCases) { Text($0.label).tag($0) }
+                }
                 Toggle("Mark detected scratches (preview only, doesn't fix)",
                        isOn: $model.scratch.markOnly)
             }.disabled(!model.scratch.enabled)
@@ -202,6 +205,10 @@ struct ContentView: View {
                            isOn: $model.dirt.mcShowMask)
                     Toggle("AI-assisted scratch detection (needs AI engine — see Setup)",
                            isOn: $model.dirt.mcUseML)
+                    if model.dirt.mcUseML {
+                        Toggle("Protect dark line art from AI repair (animation)",
+                               isOn: $model.dirt.mcProtectDark)
+                    }
                     Text("Detects dirt with motion-compensated evidence, repairs only inside the mask — everything else passes through untouched.")
                         .font(.caption).foregroundStyle(.secondary)
                 case .removeDirtMC:

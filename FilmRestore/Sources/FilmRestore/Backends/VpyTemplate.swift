@@ -17,6 +17,21 @@ struct ScratchSettings: Equatable {
                             // detected ~nothing on the real scan (0.0004 mean Δ)
     var maxangle = 5.0      // was 3
     var markOnly = false    // DeScratch mark mode: highlight, don't fix
+    var polarity: ScratchPolarity = .both  // plugin default is DARK-only, which
+                                           // on animation hunts ink lines
+
+    enum ScratchPolarity: String, CaseIterable, Identifiable {
+        case dark, bright, both
+        var id: String { rawValue }
+        var modeY: Int { self == .dark ? 1 : self == .bright ? 2 : 3 }
+        var label: String {
+            switch self {
+            case .dark: return "Dark scratches"
+            case .bright: return "Bright scratches (safe for line art)"
+            case .both: return "Dark + bright"
+            }
+        }
+    }
 
     var oddMaxwidth: Int { maxwidth | 1 }  // UI safety: force odd
 }
@@ -49,6 +64,7 @@ struct DirtSettings: Equatable {
     var mcMaxSize = 600         // blobs bigger than this are objects, not dirt
     var mcShowMask = false      // red-overlay detection preview
     var mcUseML = false         // AI-assisted scratch masks (BOPBTL U-Net, ADR-14)
+    var mcProtectDark = false   // shield dark line art from ML inpaint (animation)
 
     enum Polarity: String, CaseIterable, Identifiable {
         case both, dark, bright
@@ -120,7 +136,7 @@ enum VpyTemplate {
             body.append("clip = core.descratch.DeScratch(clip, mindif=\(scratch.mindif), "
                       + "asym=\(scratch.asym), maxgap=\(scratch.maxgap), "
                       + "maxwidth=\(scratch.oddMaxwidth), minlen=\(scratch.minlen), "
-                      + "maxangle=\(scratch.maxangle)\(mark))")
+                      + "maxangle=\(scratch.maxangle), modey=\(scratch.polarity.modeY)\(mark))")
         }
         if dirt.enabled {
             switch dirt.engine {
@@ -131,10 +147,11 @@ enum VpyTemplate {
                 lines.append("from maskclean import maskclean")
                 var mlArg = ""
                 if let mlMaskPath {
+                    let protect = dirt.mcProtectDark ? ", ml_protect_dark=True" : ""
                     // ML mask video is rendered for the SAME frame range as the
                     // trim, so indices align 1:1
                     lines.append("_ml = core.std.ShufflePlanes(core.bs.VideoSource(\(pyString(mlMaskPath))), planes=0, colorfamily=vs.GRAY)")
-                    mlArg = ", ml_mask=_ml"
+                    mlArg = ", ml_mask=_ml" + protect
                 }
                 body.append("clip = maskclean(clip, t1=\(dirt.mcSensitivity), "
                           + "polarity=\(pyString(dirt.mcPolarity.rawValue)), "

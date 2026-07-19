@@ -18,6 +18,22 @@ struct Preset: Identifiable {
             scratch: ScratchSettings(),                   // on (default)
             dirt: DirtSettings()),                        // on, RemoveDirt (default)
         Preset(
+            id: "anim",
+            name: "Animated film",
+            note: "Cel animation: ink outlines look like dark scratches to detectors — scratch removal goes bright-only, dark line art is shielded from AI repair, dirt detection stays temporal (static lines are inherently safe there)",
+            deflicker: DeflickerSettings(),
+            scratch: {
+                var s = ScratchSettings()
+                s.polarity = .bright     // ink is dark; print-base scratches scan bright
+                s.minlen = 60            // straight dark prop edges need longer runs to trigger anyway
+                return s
+            }(),
+            dirt: {
+                var d = DirtSettings()
+                d.mcProtectDark = true   // if AI masks are used, never inpaint dark linework
+                return d
+            }()),
+        Preset(
             id: "8mm",
             name: "8mm home movie",
             note: "Strong deflicker + dirt removal; scratch removal off (8mm damage is rarely straight vertical lines)",

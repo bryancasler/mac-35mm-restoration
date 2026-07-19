@@ -43,7 +43,7 @@ def _luma(clip):
 def maskclean(clip, t1=24, t2=14, polarity="both",
               min_size=2, max_size=600, dilate=1, sad_max=None, adj_radius=3,
               preview_mask=False, blob_filter=True, return_mask=False,
-              ml_mask=None):
+              ml_mask=None, ml_protect_dark=False):
     if clip.format.color_family != vs.YUV or clip.format.bits_per_sample != 8:
         raise ValueError("maskclean: 8-bit YUV input only (pipeline is yuv420p)")
     if polarity not in ("both", "dark", "bright"):
@@ -135,6 +135,15 @@ def maskclean(clip, t1=24, t2=14, polarity="both",
         return inner_mask
 
     mask = core.std.FrameEval(mask, _cut_safety, prop_src=sc)
+
+    # --- animation shield: the BOPBTL net is photo-trained and can flag dark
+    # ink outlines as scratches; subtract locally-dark line-art pixels from the
+    # ML mask so spatial inpaint can never erase drawn linework
+    if ml_mask is not None and ml_protect_dark:
+        blur = core.std.BoxBlur(y, hradius=4, vradius=4)
+        dark_lines = core.std.Expr([blur, y], "x y - 12 > 255 0 ?")
+        dark_lines = core.std.Maximum(dark_lines)
+        ml_mask = core.std.Expr([ml_mask, dark_lines], "y 0 > 0 x ?")
 
     if return_mask:
         return mask
