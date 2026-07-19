@@ -25,8 +25,8 @@ struct Preset: Identifiable {
             scratch: {
                 var s = ScratchSettings()
                 s.polarity = .bright     // ink is dark; print-base scratches scan bright
-                s.minlen = 20            // bright-only can't touch ink, so go aggressive
-                s.maxgap = 12            // (S7 visual loop, iter1)
+                s.minlen = 45            // 20 smeared pale needle strokes in fine
+                s.maxgap = 8             // foliage (S7 iter6 vision catch)
                 return s
             }(),
             dirt: {

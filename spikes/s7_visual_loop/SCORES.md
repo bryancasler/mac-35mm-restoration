@@ -14,6 +14,7 @@ ML masks per sample cached in `mlmasks/` (threshold 0.3).
 | 3 | blob-level cur-anomaly guard (p90 ≥ 10) | speckles faint (merged components / ML inpaint path unguarded) | .97·.95 / .62·.69 |
 | 4 | p90 ≥ 14 + ML-mask cur-anomaly gate | **motion clean, no regressions visible** | **.98·.95 / .68·.69** |
 | 5 | 7th sample hunt (gouge verification) — persistent-bright scan → 92500 (city lamps/glints), sparse whole-film ML scan → 61000 (animated rain) | no true gouge window found by automated search; BUT all three content-lookalike scenes (glints, streetlamps, rain streaks) pass through undamaged with ML fusion active — false-positive resistance validated; mid@90000 char close-up: linework intact | unchanged (no detector change) |
+| 6 | t2 sweep 18/22 + regression triage | t2=22 motion vision-clean; damage1 streaks traced to iter1's DeScratch minlen=20 smearing pale needle strokes (NOT t2 — discriminated via iter6b) → minlen 45 / maxgap 8 restores foliage, streaks gone (iter6c). ADOPTED: t2=22 + minlen 45/maxgap 8 → product + preset | static .98·.95 unchanged / motion P .61 R **.80** FP .061% |
 
 Key insight (iter2→3): "real dirt is a spatial outlier" is true at BLOB level, not
 pixel level — dirt blobs are flat inside; and the discriminating signal for the

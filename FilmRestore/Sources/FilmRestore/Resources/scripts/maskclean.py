@@ -40,7 +40,7 @@ def _luma(clip):
     return core.std.ShufflePlanes(clip, planes=0, colorfamily=vs.GRAY)
 
 
-def maskclean(clip, t1=24, t2=14, polarity="both",
+def maskclean(clip, t1=24, t2=22, polarity="both",
               min_size=2, max_size=600, dilate=1, sad_max=None, adj_radius=3,
               preview_mask=False, blob_filter=True, return_mask=False,
               ml_mask=None, ml_protect_dark=False):

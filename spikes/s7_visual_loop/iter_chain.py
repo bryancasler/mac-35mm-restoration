@@ -13,12 +13,12 @@ core = vs.core
 
 def chain(clip, ml_path=None):
     clip = deflicker(clip, size=10, mode="pm")
-    clip = core.descratch.DeScratch(clip, mindif=5, asym=10, maxgap=12, maxwidth=5,
-                                    minlen=20, maxangle=5.0, modey=2)
+    clip = core.descratch.DeScratch(clip, mindif=5, asym=10, maxgap=8, maxwidth=5,
+                                    minlen=45, maxangle=5.0, modey=2)
     ml = None
     if ml_path:
         ml = core.std.ShufflePlanes(core.bs.VideoSource(ml_path), planes=0,
                                     colorfamily=vs.GRAY)
-    clip = maskclean(clip, t1=24, polarity="both", max_size=600,
+    clip = maskclean(clip, t1=24, t2=22, polarity="both", max_size=600,
                      ml_mask=ml, ml_protect_dark=True)
     return clip
