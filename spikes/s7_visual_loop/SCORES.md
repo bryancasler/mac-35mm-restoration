@@ -104,3 +104,21 @@ reference, so no temporal vote can see it; needs either local re-alignment
 (phase correlation within the box) or spatial inpaint keyed on cur-anomaly.
 Stopped after one non-improving iteration (20); at 1x/24fps the sliver is a
 single-frame near-invisible nub vs the original unmissable clump.
+
+### Leg 3 addendum — iter 21 (user re-marked 14654 @ (372,508))
+
+| iter | change | vision verdict | synthetic |
+|---|---|---|---|
+| 21a | chroma-anomaly-keyed Telea polish in vouched boxes (an>24) | never fires — cel paint is chroma-flat; the sliver is a luma artifact (masks bit-identical) | unchanged |
+| 21b | geometry+refdiff key: blackhat(13)>20 → 3×3 open → AND refdiff>agree_t (dil 3) → Telea | blob ~halved, trunk intact; soft olive chunks below bh threshold survive | unchanged |
+| 21b′ | relaxed (bh>14, unstable dil 5, mask dil 2) | REGRESSION: trunk severed above the blob — mask growth crossed the 3px line | — |
+| 21 final | bh>14, **4×4 opening** (thin lines ≤3px structurally fall out of the blob mask), unstable dil 3, mask dil 1 | residual blob substantially reduced; remainder reads as natural base flare; trunk intact across all 6 sweep frames (14642–14662) | P .976/.953 static, P .586/.800 motion — exact baselines; **all 7 non-target samples bit-identical to iter20** |
+
+**Iter-21 verdict: WIN, shipped.** The polish implements the leg-3 conclusion's
+"spatial inpaint" branch with the key that actually separates the residual:
+geometry (compact dark blob wider than the thin structure — 4×4 opening is the
+line shield) AND temporal instability (refs disagreed there; legit dark content
+like the pines has agreeing refs). Triple-scoped: vouched giant box AND blob
+AND unstable. Proven zero-collateral: every non-target sample bit-identical.
+The 4×4-vs-3×3 opening distinction is load-bearing — 3×3 keeps 3px lines in
+the blob mask and Telea severs them (21b′).

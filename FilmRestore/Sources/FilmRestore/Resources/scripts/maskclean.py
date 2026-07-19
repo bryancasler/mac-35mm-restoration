@@ -367,6 +367,47 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
                     cur[y0:y1, x0:x1] = np.clip(
                         alpha * patch + (1.0 - alpha) * region, 0, 255
                     ).astype(np.uint8)
+
+            # Geometry-keyed Telea polish (S7 iter21): the last residual class
+            # — debris pixels kept because MC corrupted the local reference
+            # where the clump crossed a thin dark structure (iter20). No
+            # temporal vote can see them, but they are geometrically loud: a
+            # compact dark blob WIDER than the thin line it sits on, in a spot
+            # where the refs disagreed. Blackhat finds dark-vs-local; a 4x4
+            # opening erases legit thin line work (<=3px wide) but keeps >=4px
+            # blobs; the ref-disagreement gate excludes real dark content (refs
+            # agree on it). Box-scoped: zero effect outside vouched giants.
+            yv = np.asarray(fout[0])
+            rpy = np.asarray(f[1][0]).astype(np.int16)
+            rny = np.asarray(f[2][0]).astype(np.int16)
+            sw = fout.format.subsampling_w
+            sh = fout.format.subsampling_h
+            k3 = np.ones((3, 3), np.uint8)
+            for (bx0, by0, bx1, by1) in boxes:
+                if bx1 <= bx0 + 8 or by1 <= by0 + 8:
+                    continue
+                ybox = yv[by0:by1, bx0:bx1]
+                bh = cv2.morphologyEx(ybox, cv2.MORPH_BLACKHAT,
+                                      cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13)))
+                blob = cv2.morphologyEx((bh > 14).astype(np.uint8), cv2.MORPH_OPEN,
+                                         np.ones((4, 4), np.uint8))
+                refdiff = np.abs(rpy[by0:by1, bx0:bx1] - rny[by0:by1, bx0:bx1])
+                unstable = cv2.dilate((refdiff > agree_t).astype(np.uint8), k3, iterations=3)
+                m8 = blob & unstable
+                if not m8.any():
+                    continue
+                m8 = cv2.dilate(m8, k3)
+                yv[by0:by1, bx0:bx1] = cv2.inpaint(
+                    np.ascontiguousarray(ybox), m8, 3, cv2.INPAINT_TELEA)
+                mc = np.ascontiguousarray(m8[::1 << sh, ::1 << sw])
+                for pl in (1, 2):
+                    arr = np.asarray(fout[pl])
+                    cb0, cb1 = by0 >> sh, by1 >> sh
+                    ca0, ca1 = bx0 >> sw, bx1 >> sw
+                    box = arr[cb0:cb1, ca0:ca1]
+                    arr[cb0:cb1, ca0:ca1] = cv2.inpaint(
+                        np.ascontiguousarray(box), mc[:box.shape[0], :box.shape[1]],
+                        3, cv2.INPAINT_TELEA)
             return fout
 
         out = core.std.ModifyFrame(out, [out, comp_p, comp_n], _dustbust)
