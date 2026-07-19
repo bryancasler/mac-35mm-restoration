@@ -167,7 +167,8 @@ final class VapourSynthBackend {
                              scratch: ScratchSettings, dirt: DirtSettings,
                              encode: EncodeSettings, scriptsDir: URL,
                              start: Double, duration: Double, label: String,
-                             passes: Int = 1, mlMaskPath: String? = nil) -> ChainPlan {
+                             passes: Int = 1, mlMaskPath: String? = nil,
+                             frameCounter: Bool = false) -> ChainPlan {
         let startFrame = Int((start * media.fps).rounded())
         let frames = Int((duration * media.fps).rounded())
         let endFrame = min(startFrame + frames, media.totalFrames)
@@ -177,7 +178,7 @@ final class VapourSynthBackend {
                                      trimRange: startFrame..<endFrame,
                                      deflicker: deflicker, scratch: scratch,
                                      dirt: dirt, scriptsDir: scriptsDir, passes: passes,
-                                     mlMaskPath: mlMaskPath)
+                                     mlMaskPath: mlMaskPath, frameCounter: frameCounter)
         var args: [String] = ["-nostdin", "-hide_banner", "-y",
                               "-f", "yuv4mpegpipe", "-i", "-", "-an",
                               "-c:v", "hevc_videotoolbox", "-q:v", String(encode.quality),

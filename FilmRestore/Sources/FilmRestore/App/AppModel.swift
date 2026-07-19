@@ -19,6 +19,7 @@ final class AppModel: ObservableObject {
     @Published var sbsStartString = "10:00"    // side-by-side custom mode
     @Published var sbsLengthString = "60"
     @Published var sbsDiffColumn = false       // third column: |src − restored| ×8
+    @Published var showFrameCounter = false    // burn absolute source frame numbers into previews
     @Published var sbsOutput: URL?
     @Published var lastStats: String?          // completion stats line
 
@@ -56,7 +57,8 @@ final class AppModel: ObservableObject {
 
     private var currentBundle: SettingsBundle {
         SettingsBundle(deflicker: deflicker, scratch: scratch, dirt: dirt,
-                       encode: encode, passes: passes, sbsDiffColumn: sbsDiffColumn)
+                       encode: encode, passes: passes, sbsDiffColumn: sbsDiffColumn,
+                       showFrameCounter: showFrameCounter)
     }
 
     private func apply(bundle: SettingsBundle) {
@@ -66,6 +68,7 @@ final class AppModel: ObservableObject {
         encode = bundle.encode
         passes = bundle.passes
         sbsDiffColumn = bundle.sbsDiffColumn
+        showFrameCounter = bundle.showFrameCounter ?? false
     }
 
     private func persistSettings() {
@@ -147,12 +150,13 @@ final class AppModel: ObservableObject {
                 media: media, deflicker: DeflickerSettings(enabled: false),
                 scratch: .off, dirt: .off,
                 encode: encode, scriptsDir: scripts,
-                start: start, duration: clipDuration, label: "A_source")
+                start: start, duration: clipDuration, label: "A_source",
+                frameCounter: showFrameCounter)
             let planB = VapourSynthBackend.testClipPlan(
                 media: media, deflicker: deflicker, scratch: scratch, dirt: dirt,
                 encode: encode, scriptsDir: scripts,
                 start: start, duration: clipDuration, label: "B_filtered",
-                passes: passes)
+                passes: passes, frameCounter: showFrameCounter)
             errorMessage = nil
             let startFrame = Int((start * media.fps).rounded())
             let clipFrames = Int((clipDuration * media.fps).rounded())
@@ -165,7 +169,8 @@ final class AppModel: ObservableObject {
                         media: media, deflicker: self.deflicker, scratch: self.scratch,
                         dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
                         start: start, duration: self.clipDuration, label: "B_filtered",
-                        passes: self.passes, mlMaskPath: mlPath)
+                        passes: self.passes, mlMaskPath: mlPath,
+                        frameCounter: self.showFrameCounter)
                     self.jobLabel = "Rendering test clip A (source)…"
                     self.jobProgress = nil
                     _ = try await vsBackend.run(plan: planAvs, estimatedOutputBytes: 50_000_000) { s in
@@ -341,7 +346,8 @@ final class AppModel: ObservableObject {
                                                      deflicker: self.deflicker, scratch: self.scratch,
                                                      dirt: self.dirt, scriptsDir: scripts,
                                                      passes: self.passes, sideBySide: true,
-                                                     diffColumn: self.sbsDiffColumn)
+                                                     diffColumn: self.sbsDiffColumn,
+                                                     frameCounter: self.showFrameCounter)
                         let plan = ChainPlan(vpyContent: vpy,
                                              ffmpegArgs: SideBySide.vsEncodeArgs(
                                                 quality: self.encode.quality, output: stackedURL),

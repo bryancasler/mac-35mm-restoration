@@ -12,6 +12,7 @@ struct SettingsBundle: Codable, Equatable {
     var encode: EncodeSettings
     var passes: Int
     var sbsDiffColumn: Bool
+    var showFrameCounter: Bool?   // optional so older settings files still decode
 }
 
 enum SettingsStore {

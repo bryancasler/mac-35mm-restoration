@@ -111,7 +111,8 @@ enum VpyTemplate {
                        passes: Int = 1,
                        sideBySide: Bool = false,
                        diffColumn: Bool = false,
-                       mlMaskPath: String? = nil) -> String {
+                       mlMaskPath: String? = nil,
+                       frameCounter: Bool = false) -> String {
         var lines: [String] = [
             "import sys",
             "import vapoursynth as vs",
@@ -205,6 +206,15 @@ enum VpyTemplate {
             } else {
                 lines.append("clip = core.std.StackHorizontal([source_half, clip])")
             }
+        }
+        if frameCounter {
+            // absolute SOURCE frame number (trim offset + n), top-right — so a
+            // frame seen in a preview maps 1:1 to a source frame reference
+            let offset = trimRange?.lowerBound ?? 0
+            lines.append("_ctr_base = clip")
+            lines.append("def _burn(n):")
+            lines.append("    return core.text.Text(_ctr_base, \"frame %d\" % (\(offset) + n), alignment=9, scale=2)")
+            lines.append("clip = core.std.FrameEval(clip, _burn)")
         }
         lines.append("clip.set_output()")
         return lines.joined(separator: "\n") + "\n"
