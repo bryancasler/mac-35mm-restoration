@@ -26,6 +26,9 @@
 4. Someday: Developer ID signing + notarization (README has the commands).
 
 ## Blockers / open questions
+- S7 visual loop CONCLUDED (8 cycles; see s7_visual_loop/SCORES.md conclusion):
+  5 product improvements shipped, safety validated on 8 content classes. Resumable
+  once the user supplies a timestamp for the gouge-heavy frame (dog behind planks).
 - None blocking. **MVTools v24 prebuilt was silently broken** (Compensate/Flow
   no-op on VS R77 → SpotLess never worked; RESULTS 2026-07-18 correction) — now
   built from source; doctor has a no-op canary. Quality overhaul underway per
