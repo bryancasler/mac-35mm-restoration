@@ -100,29 +100,48 @@ def maskclean(clip, t1=24, t2=14, polarity="both",
             adj = core.std.Maximum(adj)
         mask = core.std.Expr([mask, adj], "y 0 > 0 x ?")
 
-    # --- optional blob stage: area gating via connected components
+    # --- optional blob stage: area gating via connected components, plus the
+    # sparkle-inversion guard (S7 iter2): real dirt is spatially anomalous in
+    # the CURRENT frame; a 2-vs-1 temporal inversion (both neighbors carry
+    # stochastic texture where cur is plain) is not. Components whose
+    # 90th-percentile |cur − blur(cur)| is low get dropped.
     if blob_filter and _HAVE_CV2:
         lo, hi = int(min_size * min_size), int(max_size)
+        yblur = core.std.BoxBlur(y, hradius=4, vradius=4)
 
         def _gate(n, f):
-            fout = f.copy()
-            m = np.asarray(f[0])
+            fout = f[0].copy()
+            m = np.asarray(f[0][0])
+            yv = np.asarray(f[1][0]).astype(np.int16)
+            bl = np.asarray(f[2][0]).astype(np.int16)
+            anomaly = np.abs(yv - bl)
             count, labels, stats, _ = cv2.connectedComponentsWithStats(
                 (m > 0).astype(np.uint8), connectivity=8)
             keep = np.zeros_like(m)
             for i in range(1, count):
                 area = stats[i, cv2.CC_STAT_AREA]
-                if lo <= area <= hi:
-                    keep[labels == i] = 255
+                if not (lo <= area <= hi):
+                    continue
+                comp = labels == i
+                if np.percentile(anomaly[comp], 90) < 14:
+                    continue   # cur is plain here — neighbors own the texture
+                keep[comp] = 255
             np.asarray(fout[0])[:] = keep
             return fout
 
-        mask = core.std.ModifyFrame(mask, mask, _gate)
+        mask = core.std.ModifyFrame(mask, [mask, y, yblur], _gate)
 
     # --- dilate + feather for the merge
     for _ in range(max(0, dilate)):
         mask = core.std.Maximum(mask)
     mask = core.std.BoxBlur(mask, hradius=1, vradius=1)
+
+    # --- fill-agreement gate (S7 iter1): the dilated/feathered ring can extend
+    # into pixels where the compensated references disagree — borrowing there
+    # composites misaligned content (seen as speckle regressions in motion
+    # shots). Zero the merge mask wherever refs disagree beyond 1.5×t2.
+    fill_t = int(t2 * 1.5)
+    mask = core.std.Expr([mask, yp, yn], f"y z - abs {fill_t} > 0 x ?")
 
     # --- cut safety: zero the mask on scene-change frames
     blank = core.std.BlankClip(mask)
@@ -135,6 +154,15 @@ def maskclean(clip, t1=24, t2=14, polarity="both",
         return inner_mask
 
     mask = core.std.FrameEval(mask, _cut_safety, prop_src=sc)
+
+    # --- ML mask hygiene: only inpaint where the CURRENT frame is actually
+    # marred (spatial anomaly) — false ML hits on plain content are dropped by
+    # the same cur-anomaly principle as the blob guard (S7 iter4)
+    if ml_mask is not None:
+        _yb = core.std.BoxBlur(y, hradius=4, vradius=4)
+        _anom = core.std.Expr([y, _yb], "x y - abs 8 > 255 0 ?")
+        _anom = core.std.Maximum(_anom)
+        ml_mask = core.std.Expr([ml_mask, _anom], "y 0 > x 0 ?")
 
     # --- animation shield: the BOPBTL net is photo-trained and can flag dark
     # ink outlines as scratches; subtract locally-dark line-art pixels from the

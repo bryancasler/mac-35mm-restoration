@@ -245,3 +245,14 @@ running on PyTorch MPS in the app-managed mlenv:
 - Full-movie mask pass extrapolates to ~2–25 h depending on load/steady-state fps —
   the "quality first" tradeoff the user accepted; test clips (~1 min segments) are
   the intended use until benchmarked on a quiet machine.
+
+## S7 — visual iteration loop (2026-07-18): baseline + 4 iterations
+
+User-requested goal/loop: fixed 6-sample before/after composites, Claude vision
+scoring + S6 synthetic cross-check each iteration (full log: s7_visual_loop/SCORES.md).
+Net product changes after 4 iterations: fill-agreement gate, blob-level cur-anomaly
+guard (kills the sparkle-inversion regression on stochastic animated texture),
+ML-mask anomaly gate, Animated-preset DeScratch aggression (minlen 20/maxgap 12 —
+free under bright-only). Metrics: static P .967→.976, motion P .538→.679, FP rate
+.071%→.038%, recall held. Persistent bright gouges (user's marked frame) are the
+ML tier's job — AI-assisted detection is the recommended toggle for this print.

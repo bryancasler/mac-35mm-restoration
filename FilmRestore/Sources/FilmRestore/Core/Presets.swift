@@ -25,7 +25,8 @@ struct Preset: Identifiable {
             scratch: {
                 var s = ScratchSettings()
                 s.polarity = .bright     // ink is dark; print-base scratches scan bright
-                s.minlen = 60            // straight dark prop edges need longer runs to trigger anyway
+                s.minlen = 20            // bright-only can't touch ink, so go aggressive
+                s.maxgap = 12            // (S7 visual loop, iter1)
                 return s
             }(),
             dirt: {
