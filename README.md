@@ -1,77 +1,122 @@
-# FilmRestore (working title)
+# FilmRestore
 
-Single-purpose macOS app (Apple Silicon only) for restoring digitized film scans:
-deflicker, vertical-scratch removal, dust/dirt removal, then a clean HEVC encode.
-Native SwiftUI shelling out to Homebrew-installed ffmpeg and VapourSynth. All FOSS.
+**One-window film restoration for the Mac.** Drop in a digitized film scan, preview the
+cleanup on real footage, and render a restored copy — deflicker, scratch removal, and
+dirt removal in a single lossless-quality encode. Native SwiftUI on Apple Silicon,
+driving Homebrew-installed ffmpeg and VapourSynth. All FOSS, GPL-3.0.
 
-Fixed, validated processing order: **deflicker → scratch removal → dirt removal → encode**.
+![Main window — Source and Tune sections](docs/images/main-window.png)
 
-## Setup walkthrough
+## What it does
 
-1. **Homebrew tools** (the app's Setup screen shows these too, with live re-check):
+Fixed, validated processing order: **deflicker → scratch removal → dirt removal →
+encode**, all inside one VapourSynth graph and one hardware HEVC encode — no
+intermediate files, no generational loss, even with 2×/3× multi-pass processing.
+
+| Stage | Engine | Notes |
+|---|---|---|
+| Deflicker | Bit-exact port of ffmpeg's `vf_deflicker` | Validated 1438/1440 frames identical to ffmpeg; power-mean default |
+| Scratch removal | DeScratch 4.0 (built from source) | Polarity control — *bright-only mode cannot touch dark ink lines* (animation-safe) |
+| Dirt removal | **MaskClean** (built for this app) | Detect → reviewable mask → conceal; pixels outside the mask pass through **bit-exact** |
+| | RemoveDirt MC / classic, SpotLess | Alternative engines, selectable |
+| AI tier (optional) | Microsoft BOPBTL scratch U-Net on the GPU | Spatial masks for persistent gouges that temporal detection can't see; MIT weights, ~2.5 GB install |
+
+**MaskClean** is the app's own implementation of the architecture professional tools
+(DVO Dust, MTI Shine, Resolve ADR) use: motion-compensated temporal-spike detection,
+safety classifiers (blob size/shape gating, adjacent-frame suppression, scene-cut
+zeroing, a sparkle-inversion guard for stochastic animated texture), then repair
+*only inside the mask*. Measured on a real 35mm scan with a synthetic-defect harness:
+**precision 0.98 / recall 0.95** on static footage at a 0.002% false-positive pixel
+rate.
+
+## See before you commit
+
+Every tuning decision is preview-driven:
+
+**A/B player** — render a 60-second test clip and flip source↔restored instantly with
+the spacebar; frame-step both sides in lock-step. Opens as its own window so settings
+stay editable.
+
+![A/B player](docs/images/abplayer.jpg)
+
+**Detection mask preview** — see exactly what the cleaner will touch before it touches
+it (red = dirt detections, yellow = AI scratch regions). No more guessing at
+thresholds.
+
+![Detection mask preview](docs/images/mask-preview.jpg)
+
+**Side-by-side reels** — source | restored | difference, stitched from six random
+10-second samples across the whole film (or any custom range). The difference column
+shows every changed pixel: black = untouched.
+
+![Side-by-side with difference column](docs/images/sidebyside-diff.jpg)
+
+**Workflow-shaped UI** — Source → Tune → Preview → Restore, simple by default with
+per-filter Advanced disclosures. Settings persist globally *and* per film (a sidecar
+file next to each scan remembers its tuning session).
+
+![Preview and Restore sections](docs/images/preview-restore.png)
+
+## Presets
+
+**35mm scan** · **Animated film** (bright-only scratches so ink outlines are immune,
+AI dark-line shield) · **8mm home movie** · **VHS capture** — one click each, every
+parameter still adjustable.
+
+## Measured performance (M4 Pro, 1440×1080 scan)
+
+| | |
+|---|---|
+| Full restoration chain | ~250 fps ≈ 10× realtime — a 90-minute film in ~9 minutes |
+| Output size (quality 60) | ~1.7 GB per movie |
+| AI scratch analysis | ~1–2 fps (optional pass; use on test clips first) |
+| Deflicker fidelity | bit-identical to ffmpeg on 1438/1440 validation frames |
+
+## Install
+
+1. **Homebrew tools**
    ```
-   brew install ffmpeg                       # required — phase-1 features
-   brew install vapoursynth vapoursynth-bestsource meson ninja   # for scratch/dirt removal
+   brew install ffmpeg                                            # required
+   brew install vapoursynth vapoursynth-bestsource meson ninja fftw pkgconf   # restoration stack
    ```
-2. **Get the app** — either grab the prebuilt unsigned image committed at
-   [release/FilmRestore.dmg](release/FilmRestore.dmg) (right-click → Open on first
-   launch to pass Gatekeeper; regenerated on every app change), or build it yourself:
-   ```
-   cd FilmRestore
-   ./scripts/make-dmg.sh        # → release/FilmRestore.dmg (via dist/FilmRestore.app)
-   open dist/FilmRestore.app
-   ```
-   (Development: `swift build && .build/debug/FilmRestore`.)
-3. **Restoration plugins:** open Setup (stethoscope icon) → *Download plugins…* —
-   the app fetches four sha256-pinned prebuilt plugins (MVTools, RemoveDirt,
-   TemporalMedian, zsmooth) into `~/Library/Application Support/FilmRestore/plugins`
-   after you approve the exact URLs, and builds DeScratch from source (~2 min).
-   Homebrew's tree is never touched. Then *Run smoke test* — it renders 10 frames
-   through every plugin to prove the stack.
+2. **The app** — open [release/FilmRestore.dmg](release/FilmRestore.dmg) (kept current
+   in this repo; right-click → Open on first launch, it's unsigned), or build it:
+   `cd FilmRestore && ./scripts/make-dmg.sh`
+3. **Restoration plugins** — Setup (stethoscope icon) → *Download plugins…* installs
+   four sha256-pinned prebuilts and builds MVTools + DeScratch from source into
+   `~/Library/Application Support/FilmRestore/` (Homebrew's tree is never touched).
+   *Run smoke test* proves the whole stack, including a canary that catches
+   silently-broken plugin/VapourSynth pairings.
+4. **Optional AI engine** — one click, ~2.5 GB (PyTorch + scratch-detection weights,
+   checksummed).
 
-## Using it
+## Safety rails
 
-1. Drag a scan in (MKV/MP4/MOV). The probe card shows resolution, duration, codec,
-   audio, and estimated output size + runtime.
-2. Pick a preset (35mm scan / 8mm home movie / VHS capture) or set the three filter
-   groups by hand. "Mark detected scratches" renders a preview with scratches
-   highlighted instead of fixed — good for tuning `mindif`/`minlen`.
-3. **Render a test clip** (60 s, default from 10:00) → the A/B player opens:
-   SPACE flips source↔filtered instantly, P pauses, arrow keys frame-step.
-   *Pin B as A* keeps the current render so you can compare two settings variants.
-4. **Restore full video** — output lands next to the source as `NAME.restored.mkv`
-   (never overwrites; the source is opened read-only). Progress shows fps + ETA;
-   sleep is prevented; every job writes a log to `~/Library/Logs/FilmRestore/`.
-5. **Side-by-side comparison** — renders source (left) and restored (right) into one
-   video next to the source (`NAME.sidebyside.mp4`): either a chosen start + length,
-   or *Quick sample*, which picks six random 10-second segments spread across the
-   film and stitches them into a one-minute comparison reel.
-6. **Double/triple processing** — the 1×/2×/3× selector runs the whole restoration
-   chain that many times *inside a single encode* (no generational loss, no
-   intermediate files). Applies to full runs, test clips, side-by-side, and the queue.
-7. Batch: add files to the Queue and run them all with the current settings.
-   Live stats (frames/fps/speed/ETA) show during every job; a summary line
-   (frames · wall time · fps · realtime × · output size) appears when it finishes.
-
-Measured on an M4 Pro against a real 1440x1080 35mm scan: the full restoration
-chain runs ~250 fps (≈10x realtime) — a 90-minute film in ~9 minutes.
-
-## Distribution builds (optional)
-
-`./scripts/make-app.sh "Developer ID Application: Your Name (TEAMID)"` signs with
-your identity; then notarize:
-```
-ditto -c -k --keepParent dist/FilmRestore.app dist/FilmRestore.zip
-xcrun notarytool submit dist/FilmRestore.zip --keychain-profile <profile> --wait
-xcrun stapler staple dist/FilmRestore.app
-```
-Nothing is bundled (ADR-7), so notarization has no embedded-dylib complications.
+Sources are opened read-only and outputs are auto-suffixed copies — the app never
+overwrites anything. Disk-space guard before every job with quality-aware estimates.
+Sleep prevention during renders. Per-job logs, and every error dialog has a **Copy
+debug info** button that captures the error, all settings, and the log tail for
+paste-ready troubleshooting.
 
 ## Project docs
 
-- [docs/ADR.md](docs/ADR.md) — architecture decisions (incl. VapourBox prior-art verdict)
-- [docs/PLAN.md](docs/PLAN.md) — milestones M0–M5 + verification criteria
-- [spikes/RESULTS.md](spikes/RESULTS.md) — validation spike verdicts with numbers
+- [docs/ADR.md](docs/ADR.md) — 14 architecture decision records
+- [docs/PLAN.md](docs/PLAN.md) — milestone history with verification criteria
+- [spikes/RESULTS.md](spikes/RESULTS.md) — every validation spike and measurement
+- [docs/research/](docs/research/) — the four-angle restoration-technique research
+  behind the MaskClean/AI design
 - [CLAUDE.md](CLAUDE.md) / [STATE.md](STATE.md) — repo-based process management
 
-License: GPL-3.0 (DeScratch/RemoveDirt are GPL; see ADR-11).
+## Development
+
+```
+cd FilmRestore
+swift build && .build/debug/FilmRestore     # run from source
+swift test                                  # unit tests
+.build/debug/FilmRestore --selftest <file>      # headless end-to-end verification
+.build/debug/FilmRestore --selftest-vs <file>   # VapourSynth-chain verification
+.build/debug/FilmRestore --doctor               # dependency + plugin health
+```
+
+License: **GPL-3.0** (DeScratch and RemoveDirt are GPL; see ADR-11). The bundled
+scratch-detection model is MIT (Microsoft "Bringing Old Photos Back to Life").
