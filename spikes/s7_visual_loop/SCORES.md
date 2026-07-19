@@ -41,6 +41,7 @@ gashes. Frame-counter overlay shipped so future reports can cite exact frames.
 | 8 | baseline on 10:00–11:00 windows | tenB: door specks cleaned, linework intact; tenD: **blue chroma flecks SURVIVE** — new failure class: luma-only detection is blind to colored defects | n/a |
 | 9 | chroma spike test (U/V, t1c=12, t2c=10) OR-ed into detector | tenD flecks STILL survive — blob guard's luma-only anomaly test drops the chroma detections | n/a |
 | 10 | blob guard extended with chroma anomaly evidence | tenD: most blue flecks removed; 1–2 faint persistent traces remain (spatial-repair class); motion sentinel clean | static .98·.95 unchanged / motion P .586 R .800 FP .067% (small P cost for a new detectable class) |
+| 11 | tenA/tenC review + shape-specific gash scan of the full minute | tenA/tenC mid-frames: defects cleaned, no gashes visible (sporadic class — mid-frame sampling misses them). Gash scan top cluster (15026–15076) = banister glint rays — CONTENT, correctly preserved; frame's real light dashes cleaned. 3rd automated hunt → 3rd lookalike: user's new click-to-mark tool is the right instrument for a positive gash case. No change | unchanged |
 
 ## Loop conclusion (2026-07-19, after 8 cycles: iters 0–7)
 
