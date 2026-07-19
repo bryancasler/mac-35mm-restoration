@@ -15,6 +15,7 @@ struct DependencyStatus {
     var descratch = false
     var mvtools = false
     var pysite = false      // numpy+cv2 for maskclean's blob stage (optional but recommended)
+    var mlReady = false     // mlenv + scratch-detector weights (optional AI tier, ADR-14)
 
     var coreOK: Bool {
         if case .ok = ffmpeg { return true }
@@ -69,6 +70,10 @@ enum DependencyDetector {
             atPath: pluginDir.appendingPathComponent(PluginSpec.mvtoolsDylib).path)
         s.pysite = FileManager.default.fileExists(
             atPath: AppDirs.appSupport.appendingPathComponent("pysite/cv2").path)
+        s.mlReady = FileManager.default.isExecutableFile(
+            atPath: AppDirs.appSupport.appendingPathComponent("mlenv/bin/python3").path)
+            && FileManager.default.fileExists(
+                atPath: AppDirs.appSupport.appendingPathComponent("models/scratch_detector.pt").path)
         return s
     }
 

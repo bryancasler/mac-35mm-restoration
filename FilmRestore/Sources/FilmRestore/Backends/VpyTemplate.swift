@@ -48,6 +48,7 @@ struct DirtSettings: Equatable {
     var mcPolarity: Polarity = .both
     var mcMaxSize = 600         // blobs bigger than this are objects, not dirt
     var mcShowMask = false      // red-overlay detection preview
+    var mcUseML = false         // AI-assisted scratch masks (BOPBTL U-Net, ADR-14)
 
     enum Polarity: String, CaseIterable, Identifiable {
         case both, dark, bright
@@ -93,7 +94,8 @@ enum VpyTemplate {
                        scriptsDir: URL,
                        passes: Int = 1,
                        sideBySide: Bool = false,
-                       diffColumn: Bool = false) -> String {
+                       diffColumn: Bool = false,
+                       mlMaskPath: String? = nil) -> String {
         var lines: [String] = [
             "import sys",
             "import vapoursynth as vs",
@@ -127,10 +129,18 @@ enum VpyTemplate {
                 // bit-exact passthrough outside the defect mask. S6-validated:
                 // static precision 0.97 / recall 0.95; motion 0.54 / 0.70.
                 lines.append("from maskclean import maskclean")
+                var mlArg = ""
+                if let mlMaskPath {
+                    // ML mask video is rendered for the SAME frame range as the
+                    // trim, so indices align 1:1
+                    lines.append("_ml = core.std.ShufflePlanes(core.bs.VideoSource(\(pyString(mlMaskPath))), planes=0, colorfamily=vs.GRAY)")
+                    mlArg = ", ml_mask=_ml"
+                }
                 body.append("clip = maskclean(clip, t1=\(dirt.mcSensitivity), "
                           + "polarity=\(pyString(dirt.mcPolarity.rawValue)), "
                           + "max_size=\(dirt.mcMaxSize)"
                           + (dirt.mcShowMask ? ", preview_mask=True" : "")
+                          + mlArg
                           + ")")
             case .removeDirtMC:
                 // johnmeyer's RemoveDirtMC (docs/research/1-vs-community.md):

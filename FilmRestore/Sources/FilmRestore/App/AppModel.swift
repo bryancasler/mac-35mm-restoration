@@ -105,8 +105,18 @@ final class AppModel: ObservableObject {
                 start: start, duration: clipDuration, label: "B_filtered",
                 passes: passes)
             errorMessage = nil
+            let startFrame = Int((start * media.fps).rounded())
+            let clipFrames = Int((clipDuration * media.fps).rounded())
             jobTask = Task {
                 do {
+                    let mlPath = try await self.runMLMaskIfNeeded(
+                        media: media, startFrame: startFrame, frames: clipFrames,
+                        label: "testclip")
+                    let planBFinal = mlPath == nil ? planB : VapourSynthBackend.testClipPlan(
+                        media: media, deflicker: self.deflicker, scratch: self.scratch,
+                        dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
+                        start: start, duration: self.clipDuration, label: "B_filtered",
+                        passes: self.passes, mlMaskPath: mlPath)
                     self.jobLabel = "Rendering test clip A (source)…"
                     self.jobProgress = nil
                     _ = try await vsBackend.run(plan: planAvs, estimatedOutputBytes: 50_000_000) { s in
@@ -114,10 +124,10 @@ final class AppModel: ObservableObject {
                     }
                     self.jobLabel = "Rendering test clip B (restoration chain)…"
                     self.jobProgress = nil
-                    _ = try await vsBackend.run(plan: planB, estimatedOutputBytes: 50_000_000) { s in
+                    _ = try await vsBackend.run(plan: planBFinal, estimatedOutputBytes: 50_000_000) { s in
                         Task { @MainActor in self.jobProgress = s }
                     }
-                    self.finishTestClip(a: planAvs.outputURL, b: planB.outputURL)
+                    self.finishTestClip(a: planAvs.outputURL, b: planBFinal.outputURL)
                 } catch { self.surface(error) }
                 self.jobLabel = nil
                 self.jobProgress = nil
@@ -158,13 +168,17 @@ final class AppModel: ObservableObject {
         guard let media, !isBusy else { return }
         if needsVS {
             guard vsReady(), let scripts = VapourSynthBackend.scriptsDir else { return }
-            let plan = VapourSynthBackend.fullRunPlan(
-                media: media, deflicker: deflicker, scratch: scratch, dirt: dirt,
-                encode: encode, scriptsDir: scripts, passes: passes)
             errorMessage = nil
             let wallStart = Date()
             jobTask = Task {
                 do {
+                    let mlPath = try await self.runMLMaskIfNeeded(
+                        media: media, startFrame: 0, frames: media.totalFrames,
+                        label: "fullrun")
+                    let plan = VapourSynthBackend.fullRunPlan(
+                        media: media, deflicker: self.deflicker, scratch: self.scratch,
+                        dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
+                        passes: self.passes, mlMaskPath: mlPath)
                     self.jobLabel = "Restoring full video (VapourSynth chain, \(self.passes)×)…"
                     self.jobProgress = nil
                     let est = estimatedFullRunBytes()
@@ -185,6 +199,30 @@ final class AppModel: ObservableObject {
                 self?.lastOutput = plan.outputURL
             }
         }
+    }
+
+    // MARK: ML mask pass (ADR-14)
+
+    /// Runs the AI scratch-mask pass when enabled+ready; returns the mask path.
+    private func runMLMaskIfNeeded(media: MediaInfo, startFrame: Int, frames: Int,
+                                   label: String) async throws -> String? {
+        guard dirt.enabled, dirt.engine == .maskClean, dirt.mcUseML else { return nil }
+        guard MLMaskPass.isReady else {
+            throw JobError.ffmpegFailed(status: -1,
+                stderrTail: "AI-assisted detection is on but the AI engine isn't installed — open Setup")
+        }
+        let out = AppDirs.testClips.appendingPathComponent("mlmask_\(label).mkv")
+        self.jobLabel = "AI scratch analysis…"
+        self.jobProgress = nil
+        try await MLMaskPass.run(source: media.url, output: out,
+                                 startFrame: startFrame, numFrames: frames) { frac in
+            Task { @MainActor in
+                var p = JobProgress(totalFrames: frames)
+                p.frame = Int(frac * Double(frames))
+                self.jobProgress = p
+            }
+        }
+        return out.path
     }
 
     // MARK: side-by-side comparison

@@ -90,6 +90,40 @@ final class PluginProvisioner {
         onStatus?("pysite installed")
     }
 
+    /// ML tier (ADR-14): venv + PyTorch (MPS) + BOPBTL scratch-detector
+    /// weights (MIT; HF mirror — the original Azure link is dead). ~2.5 GB.
+    func installMLEnv() async throws {
+        let mlenv = AppDirs.appSupport.appendingPathComponent("mlenv")
+        let models = AppDirs.appSupport.appendingPathComponent("models")
+        try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
+        let python = "/opt/homebrew/opt/python@3.14/bin/python3.14"
+        onStatus?("Creating AI environment…")
+        var r = runSync(python, ["-m", "venv", mlenv.path])
+        guard r.status == 0 else {
+            throw ProvisionError.buildFailed("mlenv venv", String(r.output.suffix(400)))
+        }
+        onStatus?("Installing PyTorch (~2.5 GB, a few minutes)…")
+        r = runSync(mlenv.appendingPathComponent("bin/pip3").path,
+                    ["install", "--no-cache-dir", "torch", "numpy", "opencv-python-headless"])
+        guard r.status == 0 else {
+            throw ProvisionError.buildFailed("mlenv pip", String(r.output.suffix(400)))
+        }
+        onStatus?("Downloading scratch-detector weights…")
+        let url = URL(string: "https://huggingface.co/databuzzword/bringing-old-photos-back-to-life/resolve/main/Global/checkpoints/detection/FT_Epoch_latest.pt")!
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+            throw ProvisionError.download("scratch_detector.pt",
+                                          (resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        let dest = models.appendingPathComponent("scratch_detector.pt")
+        try data.write(to: dest)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        try "\(digest)  scratch_detector.pt\n"
+            .write(to: models.appendingPathComponent("manifest.sha256"),
+                   atomically: true, encoding: .utf8)
+        onStatus?("AI engine installed")
+    }
+
     /// MVTools source build (dubhater master, meson): the only darwin-aarch64
     /// prebuilt (v24) silently returns input frames unchanged from
     /// Compensate/Flow on VS R77 — the doctor's no-op canary guards this.

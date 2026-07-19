@@ -193,3 +193,24 @@ inflate the SAD it thresholds — motion evidence must exclude the current frame
 threshold tuning alone cannot fix precision (the FP floor is structural, solved by
 the safety stages, not thresholds). MaskClean is the default dirt engine; RemoveDirtMC
 (johnmeyer), classic RemoveDirt, and SpotLess remain selectable.
+
+## ADR-14: Optional ML tier — mask-then-repair, never end-to-end
+
+Adopted 2026-07-18 ("quality first" user decision). Research verdict
+(docs/research/2-ml-academic.md): end-to-end film-restoration nets are CUDA-first
+research code with abandonware risk and non-commercial or absent licenses; defect
+DETECTION nets are small, licensable, and exportable. So the ML tier only generates
+masks; repair stays deterministic (maskclean):
+- Detector: Microsoft "Bringing Old Photos Back to Life" scratch U-Net (CVPR 2020,
+  MIT, weights from the HF mirror databuzzword/… — the original Azure blob is dead).
+  Runs per-frame in a separate mlenv (venv + PyTorch MPS) subprocess, writes an FFV1
+  gray mask video for the exact frame range of the job; sha256 recorded at install.
+- Fusion: maskclean(ml_mask=…) — ML regions are spatially inpainted (cv2 Telea):
+  persistent scratches appear in all MC-aligned frames, so temporal fill cannot fix
+  them by definition. Temporal-spike dirt keeps the temporal median. Preview overlays
+  ML regions in yellow vs red for the temporal detector.
+- Provisioning: user-initiated from Setup (~2.5 GB, clearly labeled); app functions
+  fully without it. Nothing ML ships inside the app bundle (ADR-7 spirit).
+- Explicit non-goals: RTN (no license, dead), ProPainter (non-commercial), diffusion
+  inpainting (impractical speed). Revisit when AbsoluteDegradation (arXiv 2607.02131)
+  releases code.

@@ -229,3 +229,19 @@ min_size=2 opening, adjacent-suppression radius 3, max_size 600.
 Negative results recorded in ADR-13 (SAD guard self-suppression; threshold-only tuning
 plateau). Engine lineup + measurements for RemoveDirtMC in the 2026-07-18 correction
 above. fps numbers deferred — machine under interactive load all evening.
+
+## Phase 3 — ML mask tier verification (2026-07-18): PASS
+
+BOPBTL scratch-detection U-Net (MIT, HF-mirror weights, sha256 in models/manifest.sha256)
+running on PyTorch MPS in the app-managed mlenv:
+- `ml_mask_pass.py` on 48 frames @ frame 14000 of the real scan: 48/48 gray FFV1
+  frames at 1440x1080, ~1.4 fps including model load (machine partially loaded;
+  atomic .part rename, per-frame MPS→CPU fallback, MLMASK progress lines verified).
+- Mask coverage 0.02–0.25%/frame (mean 0.11%) — plausible scratch density, neither
+  empty nor saturated.
+- Full-chain fusion (deflicker → DeScratch → maskclean(ml_mask=…) with spatial
+  Telea inpaint of ML regions): renders clean end-to-end via the exact template
+  invocation, 53 fps on 48 frames.
+- Full-movie mask pass extrapolates to ~2–25 h depending on load/steady-state fps —
+  the "quality first" tradeoff the user accepted; test clips (~1 min segments) are
+  the intended use until benchmarked on a quiet machine.

@@ -42,7 +42,8 @@ def _luma(clip):
 
 def maskclean(clip, t1=24, t2=14, polarity="both",
               min_size=2, max_size=600, dilate=1, sad_max=None, adj_radius=3,
-              preview_mask=False, blob_filter=True, return_mask=False):
+              preview_mask=False, blob_filter=True, return_mask=False,
+              ml_mask=None):
     if clip.format.color_family != vs.YUV or clip.format.bits_per_sample != 8:
         raise ValueError("maskclean: 8-bit YUV input only (pipeline is yuv420p)")
     if polarity not in ("both", "dark", "bright"):
@@ -139,10 +140,51 @@ def maskclean(clip, t1=24, t2=14, polarity="both",
         return mask
 
     if preview_mask:
-        # red overlay where dirt is detected (Resolve's "Show Repair Mask")
+        # red overlay where dirt is detected (Resolve's "Show Repair Mask");
+        # ML scratch regions (if provided) in yellow
         red = core.std.BlankClip(clip, color=[81, 90, 240])  # red in YUV
-        return core.std.MaskedMerge(clip, red, mask, first_plane=True)
+        out = core.std.MaskedMerge(clip, red, mask, first_plane=True)
+        if ml_mask is not None:
+            yellow = core.std.BlankClip(clip, color=[210, 16, 146])
+            out = core.std.MaskedMerge(out, yellow, ml_mask, first_plane=True)
+        return out
 
     # --- concealment: median of aligned (prev, cur, next) inside the mask only
     fill = _median3([clip, comp_p, comp_n])
-    return core.std.MaskedMerge(clip, fill, mask, first_plane=True)
+    out = core.std.MaskedMerge(clip, fill, mask, first_plane=True)
+
+    # --- ML scratch regions: persistent defects appear in ALL aligned frames,
+    # so the temporal median can't remove them — spatial inpaint instead
+    if ml_mask is not None:
+        out = _spatial_inpaint(out, ml_mask)
+    return out
+
+
+def _spatial_inpaint(clip, mask, radius=3):
+    """cv2.inpaint (Telea) of masked regions; falls back to the input when
+    cv2 is unavailable. mask: GRAY8 clip, same dimensions as clip's luma."""
+    if not _HAVE_CV2:
+        return clip
+    mask = core.std.Maximum(mask)   # small margin around the scratch
+
+    def _paint(n, f):
+        m = np.asarray(f[1][0])
+        if not m.any():
+            return f[0]
+        fout = f[0].copy()
+        mb = (m > 0).astype(np.uint8)
+        y = np.asarray(fout[0])
+        y[:] = cv2.inpaint(y, mb, radius, cv2.INPAINT_TELEA)
+        # chroma at subsampled resolution
+        sub_w = fout.format.subsampling_w
+        sub_h = fout.format.subsampling_h
+        if sub_w or sub_h:
+            mc = mb[::1 << sub_h, ::1 << sub_w]
+        else:
+            mc = mb
+        for p in (1, 2):
+            c = np.asarray(fout[p])
+            c[:] = cv2.inpaint(c, np.ascontiguousarray(mc), radius, cv2.INPAINT_TELEA)
+        return fout
+
+    return core.std.ModifyFrame(clip, [clip, mask], _paint)

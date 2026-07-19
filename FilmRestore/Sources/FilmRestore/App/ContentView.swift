@@ -200,6 +200,8 @@ struct ContentView: View {
                     }
                     Toggle("Show detection mask (red overlay, preview only)",
                            isOn: $model.dirt.mcShowMask)
+                    Toggle("AI-assisted scratch detection (needs AI engine — see Setup)",
+                           isOn: $model.dirt.mcUseML)
                     Text("Detects dirt with motion-compensated evidence, repairs only inside the mask — everything else passes through untouched.")
                         .font(.caption).foregroundStyle(.secondary)
                 case .removeDirtMC:

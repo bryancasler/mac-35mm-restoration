@@ -44,6 +44,8 @@ struct SetupView: View {
                               status.mvtools)
                         check("numpy + OpenCV — MaskClean blob analysis (optional, recommended)",
                               status.pysite)
+                        check("AI engine — PyTorch + scratch-detection net (optional, ~2.5 GB)",
+                              status.mlReady)
                         HStack {
                             if !status.pluginsOK {
                                 Button("Download plugins…") { showApproval = true }
@@ -59,6 +61,10 @@ struct SetupView: View {
                             }
                             if !status.pysite {
                                 Button("Install numpy + OpenCV") { installPysite() }
+                                    .disabled(working != nil)
+                            }
+                            if !status.mlReady {
+                                Button("Install AI engine (~2.5 GB)") { installML() }
                                     .disabled(working != nil)
                             }
                             if let working { ProgressView().controlSize(.small); Text(working) }
@@ -168,6 +174,17 @@ struct SetupView: View {
         provisioner.onStatus = { msg in Task { @MainActor in working = msg } }
         Task {
             do { try await provisioner.provisionPrebuilts() }
+            catch { errorMessage = error.localizedDescription }
+            working = nil
+            recheck()
+        }
+    }
+
+    private func installML() {
+        errorMessage = nil
+        provisioner.onStatus = { msg in Task { @MainActor in working = msg } }
+        Task {
+            do { try await provisioner.installMLEnv() }
             catch { errorMessage = error.localizedDescription }
             working = nil
             recheck()
