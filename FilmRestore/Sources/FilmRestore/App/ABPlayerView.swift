@@ -12,6 +12,22 @@ struct DefectMark: Equatable {
     let y: Int
 }
 
+/// Bridge between the SwiftUI window (buttons, overlays) and the AppKit player.
+@MainActor
+final class ABPlayerController: ObservableObject {
+    @Published var isPaused = false
+    @Published var showingB = false
+    @Published var currentAbsFrame = 0
+    @Published var markCount = 0
+    weak var view: ABPlayerNSView?
+
+    func togglePlay() { view?.togglePauseResume() }
+    func flip() { view?.flipAB() }
+    func step(_ delta: Int) { view?.stepFrame(delta) }
+    func undoMark() { view?.undoLastMark() }
+    func copyReport() { view?.copyReportNow() }
+}
+
 struct ABPlayerView: NSViewRepresentable {
     let clipA: URL
     let clipB: URL
@@ -20,6 +36,8 @@ struct ABPlayerView: NSViewRepresentable {
     var clipStartFrame: Int = 0
     var videoWidth: Int = 1440
     var videoHeight: Int = 1080
+    var renderID = UUID()
+    var controller: ABPlayerController? = nil
     var onCopyReport: (([DefectMark]) -> Void)? = nil
 
     func makeNSView(context: Context) -> ABPlayerNSView {
@@ -28,10 +46,26 @@ struct ABPlayerView: NSViewRepresentable {
         v.clipStartFrame = clipStartFrame
         v.videoSize = CGSize(width: videoWidth, height: videoHeight)
         v.onCopyReport = onCopyReport
+        v.controller = controller
+        controller?.view = v
+        context.coordinator.renderID = renderID
         return v
     }
 
-    func updateNSView(_ view: ABPlayerNSView, context: Context) {}
+    func updateNSView(_ view: ABPlayerNSView, context: Context) {
+        view.controller = controller
+        controller?.view = view
+        // a new render reuses the same filenames — reload or the players keep
+        // showing the old (deleted) files ("player seems broken" bug)
+        if context.coordinator.renderID != renderID {
+            context.coordinator.renderID = renderID
+            view.clipStartFrame = clipStartFrame
+            view.reload(clipA: clipA, clipB: clipB)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator { var renderID = UUID() }
 }
 
 final class ABPlayerNSView: NSView {
@@ -49,8 +83,10 @@ final class ABPlayerNSView: NSView {
     var clipStartFrame = 0
     var videoSize = CGSize(width: 1440, height: 1080)
     var onCopyReport: (([DefectMark]) -> Void)?
+    weak var controller: ABPlayerController?
     private var marks: [DefectMark] = []
     private let markLayer = CALayer()
+    private var timeObserver: Any?
 
     init(clipA: URL, clipB: URL, frameDuration: CMTime) {
         playerA = AVPlayer(url: clipA)
@@ -77,6 +113,13 @@ final class ABPlayerNSView: NSView {
         addSubview(label)
         updateLabel()
 
+        // live frame readout for the SwiftUI overlay (no baking into pixels)
+        let interval = CMTime(value: frameDuration.value, timescale: frameDuration.timescale)
+        timeObserver = playerA.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.pushState()
+        }
+
         // Gotcha 1: preroll only once both items are .readyToPlay
         var ready = 0
         for p in [playerA, playerB] {
@@ -92,6 +135,86 @@ final class ABPlayerNSView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    deinit {
+        if let timeObserver { playerA.removeTimeObserver(timeObserver) }
+    }
+
+    private func pushState() {
+        guard let c = controller else { return }
+        c.isPaused = paused
+        c.showingB = showingB
+        c.currentAbsFrame = currentAbsFrame
+        c.markCount = marks.count
+    }
+
+    // MARK: public controls (click buttons + keyboard share these)
+
+    func togglePauseResume() {
+        if paused {
+            anchor(from: playerA.currentTime())
+        } else {
+            playerA.pause(); playerB.pause()
+            paused = true
+            seekBoth(to: nearestFrame(playerA.currentTime()))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.redrawMarks(); self?.updateLabel()
+            }
+            updateLabel()
+        }
+        pushState()
+    }
+
+    func flipAB() {
+        showingB.toggle()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layerA.opacity = showingB ? 0 : 1
+        layerB.opacity = showingB ? 1 : 0
+        CATransaction.commit()
+        updateLabel()
+        pushState()
+    }
+
+    func stepFrame(_ delta: Int) {
+        guard paused else { return }
+        let d = CMTimeMultiply(frameDuration, multiplier: Int32(delta))
+        seekBoth(to: nearestFrame(CMTimeAdd(playerA.currentTime(), d)))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.redrawMarks(); self?.updateLabel(); self?.pushState()
+        }
+    }
+
+    func undoLastMark() {
+        if !marks.isEmpty { marks.removeLast(); redrawMarks(); updateLabel(); pushState() }
+    }
+
+    func copyReportNow() {
+        if !marks.isEmpty { onCopyReport?(marks) }
+    }
+
+    /// Swap in freshly-rendered clips (same filenames, new contents).
+    func reload(clipA: URL, clipB: URL) {
+        playerA.replaceCurrentItem(with: AVPlayerItem(url: clipA))
+        playerB.replaceCurrentItem(with: AVPlayerItem(url: clipB))
+        marks.removeAll()
+        paused = false
+        var ready = 0
+        observations.removeAll()
+        for p in [playerA, playerB] {
+            guard let item = p.currentItem else { continue }
+            observations.append(item.observe(\.status, options: [.new, .initial]) { [weak self] item, _ in
+                guard item.status == .readyToPlay else { return }
+                DispatchQueue.main.async {
+                    ready += 1
+                    if ready == 2 { self?.prerollAndStart() }
+                }
+            })
+        }
+        redrawMarks()
+        updateLabel()
+        pushState()
+    }
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -134,42 +257,17 @@ final class ABPlayerNSView: NSView {
         playerB.setRate(1.0, time: time, atHostTime: host)
         paused = false
         updateLabel()
+        pushState()
     }
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
-        case 49: // space — flip opacity only
-            showingB.toggle()
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            layerA.opacity = showingB ? 0 : 1
-            layerB.opacity = showingB ? 1 : 0
-            CATransaction.commit()
-            updateLabel()
-        case 35: // p — pause/resume; resume re-anchors, pause snaps to frame (gotcha 4)
-            if paused {
-                anchor(from: playerA.currentTime())
-            } else {
-                playerA.pause(); playerB.pause()
-                paused = true
-                seekBoth(to: nearestFrame(playerA.currentTime()))
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                    self?.redrawMarks(); self?.updateLabel()
-                }
-                updateLabel()
-            }
-        case 123, 124: // arrows — frame-step both when paused
-            guard paused else { return }
-            let delta = event.keyCode == 124 ? frameDuration
-                                             : CMTimeMultiply(frameDuration, multiplier: -1)
-            seekBoth(to: nearestFrame(CMTimeAdd(playerA.currentTime(), delta)))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                self?.redrawMarks(); self?.updateLabel()
-            }
-        case 32: // U — undo last mark
-            if !marks.isEmpty { marks.removeLast(); redrawMarks(); updateLabel() }
-        case 8: // C — copy defect report
-            if !marks.isEmpty { onCopyReport?(marks) }
+        case 49: flipAB()                       // space
+        case 35: togglePauseResume()            // p
+        case 123: stepFrame(-1)                 // left
+        case 124: stepFrame(1)                  // right
+        case 32: undoLastMark()                 // u
+        case 8: copyReportNow()                 // c
         default:
             super.keyDown(with: event)
         }
@@ -213,6 +311,7 @@ final class ABPlayerNSView: NSView {
         marks.append(DefectMark(frame: currentAbsFrame, x: px, y: py))
         redrawMarks()
         updateLabel()
+        pushState()
     }
 
     private func redrawMarks() {

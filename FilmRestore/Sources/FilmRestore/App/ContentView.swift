@@ -177,23 +177,69 @@ struct ContentView: View {
 }
 
 /// The A/B player as a real, resizable window — settings stay reachable while
-/// it plays (was a modal sheet).
+/// it plays. Click controls + a live frame overlay (metadata-driven, never
+/// baked into the clip files).
 struct ABPlayerWindow: View {
     @EnvironmentObject var model: AppModel
+    @StateObject private var controller = ABPlayerController()
+    @AppStorage("playerFrameOverlay") private var frameOverlay = true
 
     var body: some View {
         Group {
-            if let a = model.abClipA, let b = model.abClipB, let m = model.media {
+            if let a = model.abClipA, let b = model.abClipB, let meta = model.abClipMeta {
                 VStack(spacing: 0) {
-                    ABPlayerView(clipA: a, clipB: b, fpsNum: m.fpsNum, fpsDen: m.fpsDen,
-                                 clipStartFrame: model.lastClipStartFrame,
-                                 videoWidth: m.width, videoHeight: m.height,
-                                 onCopyReport: { marks in
-                                     Task { @MainActor in model.copyDefectReport(marks: marks) }
-                                 })
-                    Text("SPACE flip · P pause · ⇦⇨ step · paused click = mark defect · U undo · C copy report")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .padding(6)
+                    ZStack(alignment: .topTrailing) {
+                        ABPlayerView(clipA: a, clipB: b,
+                                     fpsNum: meta.fpsNum, fpsDen: meta.fpsDen,
+                                     clipStartFrame: meta.startFrame,
+                                     videoWidth: model.media?.width ?? 1440,
+                                     videoHeight: model.media?.height ?? 1080,
+                                     renderID: model.abRenderID,
+                                     controller: controller,
+                                     onCopyReport: { marks in
+                                         Task { @MainActor in model.copyDefectReport(marks: marks) }
+                                     })
+                        if frameOverlay {
+                            Text("frame \(controller.currentAbsFrame)")
+                                .font(.system(.title3, design: .monospaced).bold())
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
+                                .foregroundStyle(.white)
+                                .padding(10)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        Button {
+                            controller.togglePlay()
+                        } label: {
+                            Image(systemName: controller.isPaused ? "play.fill" : "pause.fill")
+                        }
+                        .help(controller.isPaused ? "Play (P)" : "Pause (P)")
+                        Button { controller.step(-1) } label: { Image(systemName: "backward.frame.fill") }
+                            .disabled(!controller.isPaused).help("Step back (⇦)")
+                        Button { controller.step(1) } label: { Image(systemName: "forward.frame.fill") }
+                            .disabled(!controller.isPaused).help("Step forward (⇨)")
+                        Button {
+                            controller.flip()
+                        } label: {
+                            Text(controller.showingB ? "Showing B — restored" : "Showing A — source")
+                                .frame(width: 170)
+                        }
+                        .help("Flip A/B (SPACE)")
+                        Divider().frame(height: 18)
+                        Text(controller.isPaused ? "click video = mark defect" : "pause to mark defects")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if controller.markCount > 0 {
+                            Button("Undo mark") { controller.undoMark() }.help("U")
+                            Button("Copy report (\(controller.markCount))") { controller.copyReport() }
+                                .buttonStyle(.borderedProminent).help("C")
+                        }
+                        Spacer()
+                        Toggle("Frame overlay", isOn: $frameOverlay)
+                            .toggleStyle(.checkbox)
+                    }
+                    .padding(8)
                 }
             } else {
                 Text("Render an A/B clip first (Preview section)")

@@ -36,3 +36,32 @@ enum SettingsStore {
         try? data.write(to: url, options: .atomic)
     }
 }
+
+
+/// Metadata for the last-rendered A/B clip pair — lets the player window work
+/// across relaunches and carry the absolute frame offset without baking
+/// anything into the video files.
+struct ClipsMeta: Codable, Equatable {
+    var aPath: String
+    var bPath: String
+    var startFrame: Int
+    var fpsNum: Int
+    var fpsDen: Int
+    var sourcePath: String
+
+    static var url: URL { AppDirs.testClips.appendingPathComponent("clips.meta.json") }
+
+    static func load() -> ClipsMeta? {
+        guard let data = try? Data(contentsOf: url),
+              let meta = try? JSONDecoder().decode(ClipsMeta.self, from: data),
+              FileManager.default.fileExists(atPath: meta.aPath),
+              FileManager.default.fileExists(atPath: meta.bPath) else { return nil }
+        return meta
+    }
+
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            try? data.write(to: Self.url, options: .atomic)
+        }
+    }
+}

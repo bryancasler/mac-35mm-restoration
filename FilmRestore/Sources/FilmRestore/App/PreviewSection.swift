@@ -47,6 +47,7 @@ struct PreviewSection: View {
                         HStack {
                             if model.abClipA != nil {
                                 Button("Open A/B player") { model.showABPlayer = true }
+                                    .keyboardShortcut("b")
                                 Button("Pin B as A") { model.pinBAsA() }
                                     .help("Keep the current filtered clip as the A side, change settings, re-render to compare variants")
                             }

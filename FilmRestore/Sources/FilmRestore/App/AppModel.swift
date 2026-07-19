@@ -32,6 +32,8 @@ final class AppModel: ObservableObject {
 
     @Published var abClipA: URL?
     @Published var abClipB: URL?
+    @Published var abRenderID = UUID()         // bumped per render — player reloads
+    @Published var abClipMeta: ClipsMeta?
     @Published var showABPlayer = false
     @Published var lastOutput: URL?
     @Published var testClipBytesPerSecond: Double?  // ADR-10 size refinement
@@ -48,6 +50,13 @@ final class AppModel: ObservableObject {
     init() {
         if let saved = SettingsStore.load(from: SettingsStore.globalURL) {
             apply(bundle: saved)
+        }
+        // restore the last A/B pair so the player window works across launches
+        if let meta = ClipsMeta.load() {
+            abClipMeta = meta
+            abClipA = URL(fileURLWithPath: meta.aPath)
+            abClipB = URL(fileURLWithPath: meta.bPath)
+            lastClipStartFrame = meta.startFrame
         }
         // debounce every model change into a settings save; skipped while a job
         // spams progress and when nothing durable actually changed
@@ -105,7 +114,11 @@ final class AppModel: ObservableObject {
         guard !isBusy else { return }
         isProbing = true
         media = nil
-        abClipA = nil; abClipB = nil
+        // keep the restored A/B pair when it belongs to this same film —
+        // wiping it unconditionally made the player window go blank on open
+        if abClipMeta?.sourcePath != url.path {
+            abClipA = nil; abClipB = nil; abClipMeta = nil
+        }
         testClipBytesPerSecond = nil
         Task {
             do {
@@ -202,6 +215,15 @@ final class AppModel: ObservableObject {
     private func finishTestClip(a: URL, b: URL) {
         abClipA = a
         abClipB = b
+        if let media {
+            let meta = ClipsMeta(aPath: a.path, bPath: b.path,
+                                 startFrame: lastClipStartFrame,
+                                 fpsNum: media.fpsNum, fpsDen: media.fpsDen,
+                                 sourcePath: media.url.path)
+            meta.save()
+            abClipMeta = meta
+        }
+        abRenderID = UUID()
         if let size = try? FileManager.default.attributesOfItem(atPath: b.path)[.size] as? Int64 {
             testClipBytesPerSecond = Double(size) / clipDuration
         }
