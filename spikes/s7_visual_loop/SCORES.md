@@ -73,3 +73,34 @@ dog-behind-planks gouge frame from the user, set the `gouges` sample to that
 window (render_iter.sh SAMPLES line + regenerate mlmasks/gouges.mkv), and rerun
 the /loop command from the session notes — first iteration should do the ML
 threshold sweep 0.25–0.35 against real gouges.
+
+## Leg 3 — first click-to-mark defect report (2026-07-19)
+
+User report via A/B-player marking tool: frame 14654 @ (372,508) — a large
+debris clump (hair/fiber wad, ~150px body + trailing filaments) over lawn,
+crossing a dark tree post. Single-frame transient (14653/14655 clean).
+Sample `mark1:14636` added (mid-frame = the marked frame). All sentinel
+renders bit-identical to baseline through every iteration below.
+
+| Iter | Change | Vision verdict | Synthetic (motion P·R·FP) |
+|---|---|---|---|
+| 13 | baseline + mark1 sample + blob_discriminator.vpy measurements | clump body survives (2175px > 600 cap); measured: clump anomaly_p90 18 / refdiff_p90 5 / neighbor-mask 0+0 px vs leaf blobs anomaly ≤12 / refdiff to 28 / neighbors in thousands — 3-signal separation with margin | — |
+| 14 | giant-transient exception: cap lifted ≤20k px behind triple gate (anomaly ≥15, refdiff <t2, neighbor bbox <64px) | clump body repaired; residue on dark post + faint filaments survive (below t1; opening kills hairlines) | P .586 R .800 FP .067% (=iter10 baseline, unchanged) |
+| 15 | low-threshold flood (t=10, no opening) inside vouched bbox | filaments mostly gone; post residue + faintest tendril remain | unchanged |
+| 16 | flood t=6 + 15px closing | no visible change (post gap 20px > kernel; tendril <6 contrast) | unchanged |
+| 17 | whole-box median-3 | residue persists: fill-agreement gate zeroes mask on post edges; median leaks ~half of semi-transparent pixels | unchanged |
+| 18 | dustbust stage: refs-only rebuild of vouched box (avg on agree, prev-clone on disagree), feathered | filaments GONE (pad-96 box), lawn clean; prev-clone smudges post edge (sub-pixel MC ghost) | unchanged |
+| 19 | median-3 fallback on disagreement instead of prev-clone; repair pad 96 | post edge crisp again, tendrils gone; olive sliver ON post survives (median keeps cur where a ref locally matches debris) | unchanged |
+| 20 | cur-privilege voting (keep cur only if a ref confirms within 8) | no change vs 19 — sliver pixels ARE ref-confirmed: MC search snapped vectors to dark content, locally corrupting the reference itself | unchanged |
+
+**Leg 3 conclusion:** ~97% removal of the marked defect (body, filaments,
+lawn residue all gone; sentinels bit-identical; synthetic unchanged).
+**Shipped:** giant-transient triple gate (isolation + agreement + anomaly —
+first crack in the mcMaxSize wall, evidence-based) and the dustbust stage
+(vouched-region refs-only rebuild, the DVO-style primitive the marking tool
+feeds). **Residual class, precisely bounded:** a ~3px sliver where debris
+crosses a thin dark structure — MC search feedback corrupts the local
+reference, so no temporal vote can see it; needs either local re-alignment
+(phase correlation within the box) or spatial inpaint keyed on cur-anomaly.
+Stopped after one non-improving iteration (20); at 1x/24fps the sliver is a
+single-frame near-invisible nub vs the original unmissable clump.

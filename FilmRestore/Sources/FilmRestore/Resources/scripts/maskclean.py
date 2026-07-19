@@ -107,6 +107,14 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
     for _ in range(max(0, min_size)):
         mask = core.std.Maximum(mask)
 
+    # Neighbor-frame detection evidence, captured before adjacent-frame
+    # suppression — the giant-transient exception below needs to know whether
+    # ANYTHING fired near a big blob in the adjacent frames (fast content
+    # like leaf swirls fires along its whole trajectory; one-frame debris
+    # clumps are surrounded by silence).
+    open_prev = mask[0] + mask[:-1]
+    open_next = mask[1:] + mask[-1]
+
     # --- BBC US5978047 adjacent-frame suppression: real dirt is temporally
     # isolated; a blob that appears near the same spot in the PREVIOUS or NEXT
     # frame's mask is erratic motion — drop it
@@ -123,6 +131,10 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
     # the CURRENT frame; a 2-vs-1 temporal inversion (both neighbors carry
     # stochastic texture where cur is plain) is not. Components whose
     # 90th-percentile |cur − blur(cur)| is low get dropped.
+    # Boxes of vouched giant transients per frame index, written by the blob
+    # gate and consumed by the dustbust stage after concealment.
+    _giant_store = {}
+
     if blob_filter and _HAVE_CV2:
         lo, hi = int(min_size * min_size), int(max_size)
         yblur = core.std.BoxBlur(y, hradius=4, vradius=4)
@@ -144,23 +156,74 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
             ub = np.asarray(f[4][0]).astype(np.int16)
             vv = np.asarray(f[5][0]).astype(np.int16)
             vb = np.asarray(f[6][0]).astype(np.int16)
+            pm = np.asarray(f[7][0])
+            nm = np.asarray(f[8][0])
+            ypv = np.asarray(f[9][0]).astype(np.int16)
+            ynv = np.asarray(f[10][0]).astype(np.int16)
             anomaly = np.maximum(np.abs(yv - bl),
                                  (np.abs(uv_ - ub) + np.abs(vv - vb)) * 3 // 2)
+            refdiff = np.abs(ypv - ynv)
             count, labels, stats, _ = cv2.connectedComponentsWithStats(
                 (m > 0).astype(np.uint8), connectivity=8)
             keep = np.zeros_like(m)
+            H, W = m.shape
+            giant_boxes = []
             for i in range(1, count):
                 area = stats[i, cv2.CC_STAT_AREA]
-                if not (lo <= area <= hi):
+                if area < lo:
                     continue
                 comp = labels == i
+                if area > hi:
+                    # Giant-transient exception (S7 iter13, user-marked
+                    # debris clump at frame 14654): blobs over the size cap
+                    # are still repaired when three independent tests all
+                    # scream "one-frame defect" — fibrous current-frame
+                    # texture, tight reference agreement, and total silence
+                    # near the blob in both neighbors' detection masks.
+                    # Measured margins: clump anomaly 18 / refdiff 5 /
+                    # neighbors 0+0 px vs leaf swirls anomaly ≤12 /
+                    # refdiff to 28 / neighbors in the thousands.
+                    if area > 20000:
+                        continue
+                    if np.percentile(anomaly[comp], 90) < 15:
+                        continue
+                    if np.percentile(refdiff[comp], 90) >= t2:
+                        continue
+                    x0 = max(0, stats[i, cv2.CC_STAT_LEFT] - 48)
+                    y0 = max(0, stats[i, cv2.CC_STAT_TOP] - 48)
+                    x1 = min(W, stats[i, cv2.CC_STAT_LEFT]
+                             + stats[i, cv2.CC_STAT_WIDTH] + 48)
+                    y1 = min(H, stats[i, cv2.CC_STAT_TOP]
+                             + stats[i, cv2.CC_STAT_HEIGHT] + 48)
+                    nbr = int((pm[y0:y1, x0:x1] > 0).sum()) \
+                        + int((nm[y0:y1, x0:x1] > 0).sum())
+                    if nbr >= 64:
+                        continue
+                    # Not added to `keep`: the median fill can't fully erase
+                    # a vouched giant (fill-agreement zeroes the mask along
+                    # sharp edges the defect crosses; median leaks ~half of
+                    # semi-transparent defect pixels back through). The
+                    # dustbust stage below rebuilds the whole box from the
+                    # references instead — padded well beyond the detected
+                    # core so faint attached extremities (trailing hair
+                    # filaments) fall inside the rebuilt region.
+                    rx0 = max(0, stats[i, cv2.CC_STAT_LEFT] - 96)
+                    ry0 = max(0, stats[i, cv2.CC_STAT_TOP] - 96)
+                    rx1 = min(W, stats[i, cv2.CC_STAT_LEFT]
+                              + stats[i, cv2.CC_STAT_WIDTH] + 96)
+                    ry1 = min(H, stats[i, cv2.CC_STAT_TOP]
+                              + stats[i, cv2.CC_STAT_HEIGHT] + 96)
+                    giant_boxes.append((rx0, ry0, rx1, ry1))
+                    continue
                 if np.percentile(anomaly[comp], 90) < 14:
                     continue   # cur is plain here — neighbors own the texture
                 keep[comp] = 255
+            _giant_store[n] = giant_boxes
             np.asarray(fout[0])[:] = keep
             return fout
 
-        mask = core.std.ModifyFrame(mask, [mask, y, yblur, u, ublur, v, vblur], _gate)
+        mask = core.std.ModifyFrame(mask, [mask, y, yblur, u, ublur, v, vblur,
+                                           open_prev, open_next, yp, yn], _gate)
 
     # --- dilate + feather for the merge
     for _ in range(max(0, dilate)):
@@ -251,6 +314,62 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
     # --- concealment: median of aligned (prev, cur, next) inside the mask only
     fill = _median3([clip, comp_p, comp_n])
     out = core.std.MaskedMerge(clip, fill, mask, first_plane=True)
+
+    # --- dustbust stage (S7 iter18): vouched giant transients are rebuilt
+    # from the references only — average where they agree, prev-reference
+    # clone where they don't (sharp edges the defect crosses trip reference
+    # disagreement), alpha-feathered at the box borders. Current-frame
+    # debris cannot leak through at any contrast because the current frame
+    # contributes nothing inside the box.
+    if blob_filter and _HAVE_CV2:
+        agree_t = int(t2 * 1.5)
+
+        def _dustbust(n, f):
+            boxes = _giant_store.pop(n, None)
+            if not boxes:
+                return f[0]
+            fout = f[0].copy()
+            for plane in range(fout.format.num_planes):
+                sub = fout.format.subsampling_w if plane else 0
+                cur = np.asarray(fout[plane])
+                rp = np.asarray(f[1][plane]).astype(np.int16)
+                rn = np.asarray(f[2][plane]).astype(np.int16)
+                for (bx0, by0, bx1, by1) in boxes:
+                    x0, y0 = bx0 >> sub, by0 >> sub
+                    x1, y1 = bx1 >> sub, by1 >> sub
+                    if x1 <= x0 or y1 <= y0:
+                        continue
+                    p = rp[y0:y1, x0:x1]
+                    q = rn[y0:y1, x0:x1]
+                    c = cur[y0:y1, x0:x1].astype(np.int16)
+                    # Refs-only average where the refs agree (defect can't
+                    # leak through, however faint). Where they disagree —
+                    # thin high-contrast structures under pan, where
+                    # sub-pixel MC ghosting makes any single-ref clone smear
+                    # (iter18) — keep the current pixel only if a ref
+                    # CLOSELY confirms it (crisp real edges are within a few
+                    # codes of one ref; debris matches neither), else median3
+                    # (iter19→20).
+                    med = np.maximum(np.minimum(c, p),
+                                     np.minimum(np.maximum(c, p), q))
+                    conf = np.minimum(np.abs(c - p), np.abs(c - q))
+                    disagree = np.where(conf <= 8, c, med)
+                    patch = np.where(np.abs(p - q) <= agree_t,
+                                     (p + q + 1) // 2,
+                                     disagree).astype(np.float32)
+                    h, w = y1 - y0, x1 - x0
+                    ramp = 8 >> sub if (8 >> sub) else 1
+                    ay = np.minimum(np.arange(h), np.arange(h)[::-1])
+                    ax = np.minimum(np.arange(w), np.arange(w)[::-1])
+                    alpha = np.minimum(
+                        np.minimum.outer(ay, ax).astype(np.float32) / ramp, 1.0)
+                    region = cur[y0:y1, x0:x1].astype(np.float32)
+                    cur[y0:y1, x0:x1] = np.clip(
+                        alpha * patch + (1.0 - alpha) * region, 0, 255
+                    ).astype(np.uint8)
+            return fout
+
+        out = core.std.ModifyFrame(out, [out, comp_p, comp_n], _dustbust)
 
     # --- ML scratch regions: persistent defects appear in ALL aligned frames,
     # so the temporal median can't remove them — spatial inpaint instead
