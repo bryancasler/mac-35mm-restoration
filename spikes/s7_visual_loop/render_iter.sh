@@ -13,7 +13,7 @@ OUT="iters/$ITER"
 mkdir -p "$OUT"
 
 # fixed sample set: name:start_frame (36-frame windows, mid-frame captured)
-SAMPLES="damage1:14000 town:30000 static:50000 motion:70000 mid:90000 late:110000"
+SAMPLES="damage1:14000 town:30000 static:50000 motion:70000 mid:90000 gouges:60982 late:110000"
 
 for s in $SAMPLES; do
   name="${s%%:*}"; start="${s#*:}"
