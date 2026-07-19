@@ -30,6 +30,18 @@ Persistent-bright-defect gap (user report): static-scene emulsion gouges are
 temporally invisible by definition → the ML tier's spatial masks + Telea inpaint is
 the correct fix; now anomaly-gated so false ML hits on plain content can't inpaint.
 
+## Leg 2 — user-reported 10:00–11:00 window (2026-07-19, resumed)
+
+Samples refocused: tenA:14386 tenB:14746 tenC:15106 tenD:15466 (+static/motion
+sentinels). User reports surviving black specks (small+large) and white vertical
+gashes. Frame-counter overlay shipped so future reports can cite exact frames.
+
+| Iter | Change | Vision verdict | Synthetic (static / motion P·R) |
+|---|---|---|---|
+| 8 | baseline on 10:00–11:00 windows | tenB: door specks cleaned, linework intact; tenD: **blue chroma flecks SURVIVE** — new failure class: luma-only detection is blind to colored defects | n/a |
+| 9 | chroma spike test (U/V, t1c=12, t2c=10) OR-ed into detector | tenD flecks STILL survive — blob guard's luma-only anomaly test drops the chroma detections | n/a |
+| 10 | blob guard extended with chroma anomaly evidence | tenD: most blue flecks removed; 1–2 faint persistent traces remain (spatial-repair class); motion sentinel clean | static .98·.95 unchanged / motion P .586 R .800 FP .067% (small P cost for a new detectable class) |
+
 ## Loop conclusion (2026-07-19, after 8 cycles: iters 0–7)
 
 **Shipped from this loop:** fill-agreement gate · blob-level cur-anomaly guard

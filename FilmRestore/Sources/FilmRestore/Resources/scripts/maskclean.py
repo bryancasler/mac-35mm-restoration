@@ -42,6 +42,7 @@ def _luma(clip):
 
 def maskclean(clip, t1=24, t2=22, polarity="both",
               min_size=2, max_size=600, dilate=1, sad_max=None, adj_radius=3,
+              chroma=True, t1c=12, t2c=10,
               preview_mask=False, blob_filter=True, return_mask=False,
               ml_mask=None, ml_protect_dark=False):
     if clip.format.color_family != vs.YUV or clip.format.bits_per_sample != 8:
@@ -72,6 +73,22 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
         conds.append("x y - 0 >")
     expr = " ".join(conds) + " and" * (len(conds) - 1) + " 255 0 ?"
     mask = core.std.Expr([y, yp, yn], expr)
+
+    # --- chroma spike test (S7 iter9): colored flecks (blue paint specks etc.)
+    # have strong CHROMA contrast but weak luma contrast — invisible to the
+    # luma detector. Same MC-spike logic on U/V at chroma resolution, OR-ed in.
+    if chroma and clip.format.color_family == vs.YUV:
+        def _plane(c, i):
+            return core.std.ShufflePlanes(c, planes=i, colorfamily=vs.GRAY)
+        cexpr = (f"x y - abs {t1c} > x z - abs {t1c} > and y z - abs {t2c} < and "
+                 f"x y - x z - * 0 > and "
+                 f"a b - abs {t1c} > a c - abs {t1c} > and b c - abs {t2c} < and "
+                 f"a b - a c - * 0 > and or 255 0 ?")
+        cmask = core.std.Expr([_plane(clip, 1), _plane(comp_p, 1), _plane(comp_n, 1),
+                               _plane(clip, 2), _plane(comp_p, 2), _plane(comp_n, 2)],
+                              cexpr)
+        cmask = core.resize.Point(cmask, width=mask.width, height=mask.height)
+        mask = core.std.Expr([mask, cmask], "x y max")
 
     # --- optional SAD guard, OFF by default: block SAD includes the current
     # frame, so defects inflate it and suppress their own detection (measured:
@@ -108,13 +125,26 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
     if blob_filter and _HAVE_CV2:
         lo, hi = int(min_size * min_size), int(max_size)
         yblur = core.std.BoxBlur(y, hradius=4, vradius=4)
+        # chroma anomaly at luma resolution: colored flecks are luma-plain, so
+        # the guard must also see U/V evidence or it drops chroma detections
+        u = core.resize.Point(core.std.ShufflePlanes(clip, 1, vs.GRAY),
+                              width=y.width, height=y.height)
+        v = core.resize.Point(core.std.ShufflePlanes(clip, 2, vs.GRAY),
+                              width=y.width, height=y.height)
+        ublur = core.std.BoxBlur(u, hradius=4, vradius=4)
+        vblur = core.std.BoxBlur(v, hradius=4, vradius=4)
 
         def _gate(n, f):
             fout = f[0].copy()
             m = np.asarray(f[0][0])
             yv = np.asarray(f[1][0]).astype(np.int16)
             bl = np.asarray(f[2][0]).astype(np.int16)
-            anomaly = np.abs(yv - bl)
+            uv_ = np.asarray(f[3][0]).astype(np.int16)
+            ub = np.asarray(f[4][0]).astype(np.int16)
+            vv = np.asarray(f[5][0]).astype(np.int16)
+            vb = np.asarray(f[6][0]).astype(np.int16)
+            anomaly = np.maximum(np.abs(yv - bl),
+                                 (np.abs(uv_ - ub) + np.abs(vv - vb)) * 3 // 2)
             count, labels, stats, _ = cv2.connectedComponentsWithStats(
                 (m > 0).astype(np.uint8), connectivity=8)
             keep = np.zeros_like(m)
@@ -129,7 +159,7 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
             np.asarray(fout[0])[:] = keep
             return fout
 
-        mask = core.std.ModifyFrame(mask, [mask, y, yblur], _gate)
+        mask = core.std.ModifyFrame(mask, [mask, y, yblur, u, ublur, v, vblur], _gate)
 
     # --- dilate + feather for the merge
     for _ in range(max(0, dilate)):
