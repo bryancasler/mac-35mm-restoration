@@ -13,6 +13,24 @@ enum Doctor {
     clip = core.std.BlankClip(width=64, height=64, format=vs.YUV420P8, length=10)
     clip = core.descratch.DeScratch(clip, mindif=5, maxwidth=3)
     clip = core.zsmooth.TemporalMedian(clip, radius=1)
+
+    # MVTools no-op canary: v24 silently returned input frames unchanged from
+    # Compensate on VS R77 (found 2026-07-18). Alternate dark/bright frames:
+    # compensated frame 1 must resemble the PREVIOUS frame, not the current.
+    dark = core.std.BlankClip(width=64, height=64, format=vs.YUV420P8, length=1, color=[40, 128, 128])
+    bright = core.std.BlankClip(width=64, height=64, format=vs.YUV420P8, length=1, color=[210, 128, 128])
+    pair = dark + bright
+    sup = core.mv.Super(pair, pel=1)
+    vec = core.mv.Analyse(sup, isb=False, delta=1, blksize=8, overlap=0)
+    # thscd huge: disable the scene-change fallback (which legitimately
+    # returns the current frame) so passthrough is unambiguous
+    comp = core.mv.Compensate(pair, sup, vec, thscd1=16320, thscd2=255)
+    f1 = core.std.PlaneStats(comp, plane=0).get_frame(1)
+    avg = f1.props.PlaneStatsAverage * 255
+    if abs(avg - 210) < 30:
+        raise RuntimeError(
+            f"mv.Compensate is a NO-OP (frame passthrough, avg={avg:.0f}) — "
+            "broken MVTools/VapourSynth pairing; rebuild MVTools from source in Setup")
     clip.set_output()
     """
 

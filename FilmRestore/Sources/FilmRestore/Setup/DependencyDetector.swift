@@ -13,6 +13,7 @@ struct DependencyStatus {
     var mesonNinja: State = .missing("brew install meson ninja")
     var plugins: [String: Bool] = [:]   // dylib name → present
     var descratch = false
+    var mvtools = false
 
     var coreOK: Bool {
         if case .ok = ffmpeg { return true }
@@ -20,9 +21,10 @@ struct DependencyStatus {
     }
     var vsStackOK: Bool {
         guard case .ok = vapoursynth, case .ok = bestsource else { return false }
-        return pluginsOK && descratch
+        return pluginsOK && descratch && mvtools
     }
     var pluginsOK: Bool { plugins.values.allSatisfy { $0 } && !plugins.isEmpty }
+    var sourceBuiltOK: Bool { descratch && mvtools }
 }
 
 enum DependencyDetector {
@@ -46,9 +48,14 @@ enum DependencyDetector {
            e.contains(where: { ($0 as? String)?.hasSuffix("libbestsource.dylib") == true }) {
             s.bestsource = .ok("libbestsource.dylib present")
         }
+        // fftw + pkgconf are MVTools build deps (source-built since 2026-07-18)
         if Tools.isInstalled(Tools.brewBin + "/meson"),
-           Tools.isInstalled(Tools.brewBin + "/ninja") {
-            s.mesonNinja = .ok("meson + ninja present")
+           Tools.isInstalled(Tools.brewBin + "/ninja"),
+           Tools.isInstalled(Tools.brewBin + "/pkgconf"),
+           FileManager.default.fileExists(atPath: "/opt/homebrew/opt/fftw/lib") {
+            s.mesonNinja = .ok("meson + ninja + fftw + pkgconf present")
+        } else {
+            s.mesonNinja = .missing("brew install meson ninja fftw pkgconf")
         }
 
         for spec in PluginSpec.all {
@@ -57,6 +64,8 @@ enum DependencyDetector {
         }
         s.descratch = FileManager.default.fileExists(
             atPath: pluginDir.appendingPathComponent(PluginSpec.descratchDylib).path)
+        s.mvtools = FileManager.default.fileExists(
+            atPath: pluginDir.appendingPathComponent(PluginSpec.mvtoolsDylib).path)
         return s
     }
 

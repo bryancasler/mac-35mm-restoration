@@ -74,41 +74,56 @@ final class PluginProvisioner {
         try FileManager.default.copyItem(at: dylib, to: dest)
     }
 
+    /// MVTools source build (dubhater master, meson): the only darwin-aarch64
+    /// prebuilt (v24) silently returns input frames unchanged from
+    /// Compensate/Flow on VS R77 — the doctor's no-op canary guards this.
+    func buildMVTools() async throws {
+        try await mesonBuild(name: "MVTools", repo: PluginSpec.mvtoolsRepo,
+                             dylib: PluginSpec.mvtoolsDylib)
+    }
+
     /// DeScratch source build — the S2-proven recipe (build-descratch.sh as code).
     func buildDeScratch() async throws {
+        try await mesonBuild(name: "DeScratch", repo: PluginSpec.descratchRepo,
+                             dylib: PluginSpec.descratchDylib, recurseSubmodules: true)
+    }
+
+    private func mesonBuild(name: String, repo: String, dylib: String,
+                            recurseSubmodules: Bool = false) async throws {
         let work = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FilmRestore-descratch-\(UUID().uuidString)")
+            .appendingPathComponent("FilmRestore-\(name)-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: work) }
 
+        var cloneArgs = ["clone", "--depth", "1"]
+        if recurseSubmodules { cloneArgs += ["--recurse-submodules", "--shallow-submodules"] }
+        cloneArgs += [repo, work.appendingPathComponent("src").path]
         let steps: [(String, String, [String])] = [
-            ("clone", "/usr/bin/git",
-             ["clone", "--depth", "1", "--recurse-submodules", "--shallow-submodules",
-              PluginSpec.descratchRepo, work.appendingPathComponent("descratch").path]),
+            ("clone", "/usr/bin/git", cloneArgs),
             ("meson setup", Tools.brewBin + "/meson",
-             ["setup", work.appendingPathComponent("descratch/build").path,
-              work.appendingPathComponent("descratch").path, "--buildtype=release"]),
+             ["setup", work.appendingPathComponent("src/build").path,
+              work.appendingPathComponent("src").path, "--buildtype=release"]),
             ("ninja", Tools.brewBin + "/ninja",
-             ["-C", work.appendingPathComponent("descratch/build").path]),
+             ["-C", work.appendingPathComponent("src/build").path]),
         ]
-        for (name, tool, args) in steps {
-            onStatus?("DeScratch: \(name)…")
-            let r = runSync(tool, args)
+        for (step, tool, args) in steps {
+            onStatus?("\(name): \(step)…")
+            // meson needs brew's pkgconf on PATH to find fftw etc.
+            let r = runSync(tool, args, extraPath: Tools.brewBin)
             guard r.status == 0 else {
-                throw ProvisionError.buildFailed(name, String(r.output.suffix(600)))
+                throw ProvisionError.buildFailed("\(name) \(step)", String(r.output.suffix(600)))
             }
         }
-        guard let dylib = findFile(named: { $0.hasSuffix(".dylib") },
-                                   under: work.appendingPathComponent("descratch/build")) else {
-            throw ProvisionError.buildFailed("locate dylib", "no .dylib in build dir")
+        guard let built = findFile(named: { $0.hasSuffix(".dylib") },
+                                   under: work.appendingPathComponent("src/build")) else {
+            throw ProvisionError.buildFailed("\(name) locate dylib", "no .dylib in build dir")
         }
-        let dest = pluginDir.appendingPathComponent(PluginSpec.descratchDylib)
+        let dest = pluginDir.appendingPathComponent(dylib)
         try? FileManager.default.removeItem(at: dest)
-        try FileManager.default.copyItem(at: dylib, to: dest)
-        _ = runSync("/usr/bin/install_name_tool",
-                    ["-id", "@loader_path/\(PluginSpec.descratchDylib)", dest.path])
+        try FileManager.default.copyItem(at: built, to: dest)
+        _ = runSync("/usr/bin/install_name_tool", ["-id", "@loader_path/\(dest.lastPathComponent)", dest.path])
         _ = runSync("/usr/bin/codesign", ["-s", "-", "-f", dest.path])
-        onStatus?("DeScratch built and installed")
+        onStatus?("\(name) built and installed")
     }
 
     // MARK: helpers
@@ -122,10 +137,16 @@ final class PluginProvisioner {
     }
 
     @discardableResult
-    private func runSync(_ tool: String, _ args: [String]) -> (status: Int32, output: String) {
+    private func runSync(_ tool: String, _ args: [String],
+                         extraPath: String? = nil) -> (status: Int32, output: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = args
+        if let extraPath {
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = "\(extraPath):\(env["PATH"] ?? "/usr/bin:/bin")"
+            p.environment = env
+        }
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe

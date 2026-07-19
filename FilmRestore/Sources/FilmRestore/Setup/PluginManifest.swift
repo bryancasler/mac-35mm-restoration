@@ -10,13 +10,11 @@ struct PluginSpec: Identifiable {
     let sha256: String
     let note: String
 
+    // MVTools is NOT in this prebuilt list: the only darwin-aarch64 prebuilt
+    // (v24) silently no-ops Compensate/Flow on VapourSynth R77 — discovered
+    // 2026-07-18, see docs/research + ADR-6 amendment. It is built from
+    // source (dubhater master, meson) like DeScratch.
     static let all: [PluginSpec] = [
-        PluginSpec(
-            id: "MVTools v24",
-            dylib: "libmvtools.dylib",
-            url: URL(string: "https://github.com/Stefan-Olt/vs-plugin-build/releases/download/vsplugin/com.nodame.mvtools/v24/darwin-aarch64/2024-09-30T17.08.31%2B00.00Z/MVTools-v24-darwin-aarch64.zip")!,
-            sha256: "a0995a2d8b748d24bf3808b531c13917855fc05b34dae8a6cbd246f0c9e33f95",
-            note: "motion estimation (pinned v24 — known-good arm64, ADR-6)"),
         PluginSpec(
             id: "RemoveDirt v1.1",
             dylib: "libremovedirt.dylib",
@@ -40,4 +38,8 @@ struct PluginSpec: Identifiable {
     /// DeScratch has no prebuilt anywhere (S2) — meson source build.
     static let descratchDylib = "libdescratch.dylib"
     static let descratchRepo = "https://github.com/vapoursynth/descratch.git"
+
+    /// MVTools: source build (see note above). Needs fftw + pkgconf from brew.
+    static let mvtoolsDylib = "libmvtools.dylib"
+    static let mvtoolsRepo = "https://github.com/dubhater/vapoursynth-mvtools.git"
 }

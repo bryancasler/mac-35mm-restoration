@@ -149,7 +149,7 @@ final class VpyTemplateTests: XCTestCase {
         // validated order: deflicker → scratch → dirt (CLAUDE.md, do not re-derive)
         let d = vpy.range(of: "deflicker(clip")!.lowerBound
         let s = vpy.range(of: "descratch.DeScratch")!.lowerBound
-        let r = vpy.range(of: "RestoreMotionBlocks")!.lowerBound
+        let r = vpy.range(of: "remove_dirt_mc(clip")!.lowerBound
         XCTAssertLessThan(d, s)
         XCTAssertLessThan(s, r)
         XCTAssertTrue(vpy.contains("core.bs.VideoSource"))
@@ -195,6 +195,29 @@ final class VpyTemplateTests: XCTestCase {
         XCTAssertTrue(DeflickerSettings().enabled)
         XCTAssertTrue(VpyTemplate.needsVapourSynth(scratch: ScratchSettings(),
                                                    dirt: DirtSettings()))
+    }
+
+    func testDirtEngineRendering() {
+        var dirt = DirtSettings(); dirt.strength = 12
+        let mc = VpyTemplate.render(source: src, trimRange: nil,
+                                    deflicker: DeflickerSettings(), scratch: .off,
+                                    dirt: dirt, scriptsDir: scripts)
+        XCTAssertTrue(mc.contains("from removedirtmc import remove_dirt_mc"))
+        XCTAssertTrue(mc.contains("remove_dirt_mc(clip, strength=12)"))
+        XCTAssertFalse(mc.contains("RestoreMotionBlocks"), "MC engine lives in the script module")
+
+        dirt.engine = .removeDirt
+        let classic = VpyTemplate.render(source: src, trimRange: nil,
+                                         deflicker: DeflickerSettings(), scratch: .off,
+                                         dirt: dirt, scriptsDir: scripts)
+        XCTAssertTrue(classic.contains("RestoreMotionBlocks(restore, clip"))
+        XCTAssertTrue(classic.contains("noise=12"), "strength feeds classic noise limit")
+
+        dirt.engine = .spotLess
+        let spot = VpyTemplate.render(source: src, trimRange: nil,
+                                      deflicker: DeflickerSettings(), scratch: .off,
+                                      dirt: dirt, scriptsDir: scripts)
+        XCTAssertTrue(spot.contains("tm=False"), "truemotion off by default")
     }
 
     func testBackendRouting() {

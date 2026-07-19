@@ -186,13 +186,20 @@ struct ContentView: View {
                     ForEach(DirtSettings.Engine.allCases) { Text($0.label).tag($0) }
                 }
                 switch model.dirt.engine {
+                case .removeDirtMC:
+                    Stepper("Strength: \(model.dirt.strength)",
+                            value: $model.dirt.strength, in: 1...30)
+                    Text("Motion-compensated — keeps cleaning during camera moves. Strength 6–10 typical, up to 25–30 for badly damaged film.")
+                        .font(.caption).foregroundStyle(.secondary)
                 case .removeDirt:
                     HStack {
+                        Stepper("Strength: \(model.dirt.strength)",
+                                value: $model.dirt.strength, in: 1...30)
                         Stepper("Scene threshold: \(model.dirt.gmthreshold)%",
                                 value: $model.dirt.gmthreshold, in: 0...100, step: 5)
-                        Stepper("Motion threshold: \(model.dirt.mthreshold)",
-                                value: $model.dirt.mthreshold, in: 0...500, step: 20)
                     }
+                    Text("Legacy engine: stops cleaning wherever the camera moves — kept for comparison.")
+                        .font(.caption).foregroundStyle(.orange)
                 case .spotLess:
                     HStack {
                         Stepper("Strength (thsad): \(model.dirt.thsad)",
@@ -200,6 +207,7 @@ struct ContentView: View {
                         Stepper("Temporal radius: \(model.dirt.radT)",
                                 value: $model.dirt.radT, in: 1...3)
                     }
+                    Toggle("True-motion vectors (worse on fast motion)", isOn: $model.dirt.spotTrueMotion)
                     Text("~3x realtime (vs ~14x for RemoveDirt)").font(.caption).foregroundStyle(.secondary)
                 }
             }.disabled(!model.dirt.enabled)

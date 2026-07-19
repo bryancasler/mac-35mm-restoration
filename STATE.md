@@ -16,16 +16,21 @@
 ## Next actions (in order)
 1. **User:** GUI eyeball — open release/FilmRestore.dmg (or `swift build`), drag the
    scan in, test clip, A/B flip, mark-mode, quick-sample side-by-side reel.
-2. **Open perf question** (parked, docs/perf-vs-fullrun.md): VS full-movie runs
-   degrade progressively 80→39 fps; new prime suspect = deflicker.py per-frame
-   std.Lut node accumulation (131k nodes; spikes only ran ≤7.2k frames). Fix sketch
-   + isolation matrix in that file. Output correctness unaffected.
+2. Perf question mostly resolved (2026-07-18): slowdowns reproduce with interactive
+   load (GeForceNOW streaming etc., load avg 14+) — benchmark only on a quiet
+   machine. Lut-accumulation hypothesis demoted, not disproven; matrix still in
+   docs/perf-vs-fullrun.md if it recurs when idle.
 3. **User:** send prepared ffmpeg patch to ffmpeg-devel (one command + Gmail app
    password — steps in docs/upstream/ffmpeg-deflicker-median.md).
 4. Someday: Developer ID signing + notarization (README has the commands).
 
 ## Blockers / open questions
-- Only the parked perf question above. Nothing blocks use of the app.
+- None blocking. **MVTools v24 prebuilt was silently broken** (Compensate/Flow
+  no-op on VS R77 → SpotLess never worked; RESULTS 2026-07-18 correction) — now
+  built from source; doctor has a no-op canary. Quality overhaul underway per
+  approved plan (~/.claude/plans/…): Phase 1 (RemoveDirtMC) done, Phase 2
+  (MaskClean detect→mask→conceal) + Phase 3 (ML masks) next; research in
+  docs/research/.
 
 ## Environment facts (verified 2026-07-17)
 - ffmpeg 8.1.2 (Homebrew; no drawtext filter), Xcode 26.6 (Swift 6.3.3),

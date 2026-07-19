@@ -8,16 +8,18 @@ import vapoursynth as vs
 core = vs.core
 
 
-def spotless(clip, radT=1, thsad=10000, pel=2, blksize=8):
+def spotless(clip, radT=1, thsad=10000, pel=2, blksize=8, tm=False):
+    # tm: MVTools truemotion. Community consensus (doom9 t=181777): OFF tracks
+    # fast motion better for film cleanup — exposed in the UI.
     if not (1 <= radT <= 3):
         raise ValueError("spotless: radT must be 1..3")
     sup = core.mv.Super(clip, pel=pel)
     backward = []
     forward = []
     for delta in range(1, radT + 1):
-        bv = core.mv.Analyse(sup, isb=True, delta=delta,
+        bv = core.mv.Analyse(sup, isb=True, delta=delta, truemotion=tm,
                              blksize=blksize, overlap=blksize // 2)
-        fv = core.mv.Analyse(sup, isb=False, delta=delta,
+        fv = core.mv.Analyse(sup, isb=False, delta=delta, truemotion=tm,
                              blksize=blksize, overlap=blksize // 2)
         backward.append(core.mv.Compensate(clip, sup, bv, thsad=thsad))
         forward.append(core.mv.Compensate(clip, sup, fv, thsad=thsad))

@@ -79,6 +79,7 @@ enum Entry {
                 do {
                     try await p.provisionPrebuilts()
                     try await p.buildDeScratch()
+                    try await p.buildMVTools()
                 } catch {
                     print("PROVISION FAILED: \(error.localizedDescription)")
                     exit(1)

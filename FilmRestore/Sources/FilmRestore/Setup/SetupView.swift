@@ -40,6 +40,8 @@ struct SetupView: View {
                         }
                         check("DeScratch 4.0 — vertical scratch removal (built from source)",
                               status.descratch)
+                        check("MVTools — motion estimation (built from source; prebuilt v24 is broken on VS R77)",
+                              status.mvtools)
                         HStack {
                             if !status.pluginsOK {
                                 Button("Download plugins…") { showApproval = true }
@@ -47,6 +49,10 @@ struct SetupView: View {
                             }
                             if !status.descratch {
                                 Button("Build DeScratch") { buildDescratch() }
+                                    .disabled(working != nil || isMissing(status.mesonNinja))
+                            }
+                            if !status.mvtools {
+                                Button("Build MVTools") { buildMVTools() }
                                     .disabled(working != nil || isMissing(status.mesonNinja))
                             }
                             if let working { ProgressView().controlSize(.small); Text(working) }
@@ -83,7 +89,7 @@ struct SetupView: View {
     }
 
     private var statusReadyForDoctor: Bool {
-        if case .ok = status.vapoursynth { return status.pluginsOK && status.descratch }
+        if case .ok = status.vapoursynth { return status.pluginsOK && status.sourceBuiltOK }
         return false
     }
 
@@ -156,6 +162,17 @@ struct SetupView: View {
         provisioner.onStatus = { msg in Task { @MainActor in working = msg } }
         Task {
             do { try await provisioner.provisionPrebuilts() }
+            catch { errorMessage = error.localizedDescription }
+            working = nil
+            recheck()
+        }
+    }
+
+    private func buildMVTools() {
+        errorMessage = nil
+        provisioner.onStatus = { msg in Task { @MainActor in working = msg } }
+        Task {
+            do { try await provisioner.buildMVTools() }
             catch { errorMessage = error.localizedDescription }
             working = nil
             recheck()

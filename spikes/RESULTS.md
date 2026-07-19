@@ -186,3 +186,25 @@ measured on frames 14000–14239 of the real scan (mean |Δ| luma per pixel, 0�
    continuous run) → 0.0004 mean Δ ≈ zero pixels touched. Relaxed geometry with
    unchanged sensitivity (maxgap 3→8, maxwidth 3→5, minlen 100→40, maxangle 3→5,
    mindif stays 5) → 0.1745. Adopted as app defaults; tune per film via mark mode.
+
+## Correction (2026-07-18): MVTools v24 Compensate/Flow were silent NO-OPS on VS R77
+
+Found while building the MC dirt engine: `mv.Compensate` and `mv.Flow` from the pinned
+v24 prebuilt return the input frame bit-unchanged on VapourSynth R77 (Flow also emits
+"Explicitly instantiated a Cache… original clip has been passed through"). Verified by
+identity test on a camera-motion segment: comp≡cur exactly (0.0000) with 13.5 levels of
+raw inter-frame motion. Consequences:
+- **SpotLess never functioned** — S2's "75 fps SpotLess" benchmarked a passthrough.
+  Fps numbers for it are void; no quality conclusions were drawn from it.
+- Fix: MVTools now **built from source** (dubhater master, meson, deps fftw+pkgconf);
+  ADR-6 amended; the doctor gained a functional no-op canary (dark→bright pair with
+  scene-change fallback disabled — passthrough is unambiguous) that FAILs on v24 and
+  PASSes on the source build. Verified both directions.
+- With working MVTools, the new RemoveDirtMC engine vs old RemoveDirt on the real scan
+  (mean |Δ| luma, 120-frame segments): static 0.294→0.550 (+87%), camera-motion
+  0.265→0.319 (+21%) — motion-compensated detection keeps cleaning where the old
+  engine backed off.
+
+Also resolved: docs/perf-vs-fullrun.md — the "system-wide 25× slowdown" reproduced with
+GeForceNOW streaming + Chrome/Discord active (load avg 14–18); benchmarks are only
+valid on a quiet machine. Graph-scaling hypothesis demoted, not yet disproven.

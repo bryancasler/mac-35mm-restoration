@@ -28,21 +28,30 @@ struct DirtSettings: Equatable {
         var d = DirtSettings(); d.enabled = false; return d
     }
 
-    var engine: Engine = .removeDirt
+    var engine: Engine = .removeDirtMC
 
-    // RemoveDirt strength (default engine, ADR-12)
+    // RemoveDirt MC / classic strength: the `noise` limit of
+    // RestoreMotionBlocks' NPC detector (johnmeyer used 6-30; higher = stronger)
+    var strength = 8
+
+    // classic-engine block thresholds (kept for A/B against the old default)
     var gmthreshold = 80    // global-motion % threshold
     var mthreshold = 160    // block motion threshold
 
     // SpotLess strength (advanced engine)
     var thsad = 10_000
     var radT = 1            // 1...3
+    var spotTrueMotion = false  // community consensus: off tracks fast motion better
 
     enum Engine: String, CaseIterable, Identifiable {
-        case removeDirt, spotLess
+        case removeDirtMC, removeDirt, spotLess
         var id: String { rawValue }
         var label: String {
-            self == .removeDirt ? "RemoveDirt (default)" : "SpotLess (motion-compensated, slower)"
+            switch self {
+            case .removeDirtMC: return "RemoveDirt MC (recommended)"
+            case .removeDirt: return "RemoveDirt (classic)"
+            case .spotLess: return "SpotLess (median, slower)"
+            }
         }
     }
 }
@@ -94,6 +103,14 @@ enum VpyTemplate {
         }
         if dirt.enabled {
             switch dirt.engine {
+            case .removeDirtMC:
+                // johnmeyer's RemoveDirtMC (docs/research/1-vs-community.md):
+                // motion-compensate BEFORE detection so cleaning keeps working
+                // under camera motion. Two-step vector search on a prefiltered
+                // super, per-pixel Flow warp of the UNBLURRED frames, then the
+                // RemoveDirt composition on the aligned triple.
+                lines.append("from removedirtmc import remove_dirt_mc")
+                body.append("clip = remove_dirt_mc(clip, strength=\(dirt.strength))")
             case .removeDirt:
                 // canonical composition (avisynth.nl/RemoveDirt), zsmooth-only.
                 // RestoreMotionBlocks(filtered, restore): the CLEANSED clip goes
@@ -108,11 +125,12 @@ enum VpyTemplate {
                     "restore = core.zsmooth.Repair(cleansed, clip, mode=[16, 16, 1])",
                     "clip = core.removedirt.RestoreMotionBlocks(restore, clip, neighbour=alt, "
                         + "gmthreshold=\(dirt.gmthreshold), "
-                        + "mthreshold=\(dirt.mthreshold), dist=1, dmode=2, noise=10, noisy=12)",
+                        + "mthreshold=\(dirt.mthreshold), dist=1, dmode=2, noise=\(dirt.strength), noisy=12)",
                 ]
             case .spotLess:
                 lines.append("from spotless import spotless")
-                body.append("clip = spotless(clip, radT=\(dirt.radT), thsad=\(dirt.thsad))")
+                body.append("clip = spotless(clip, radT=\(dirt.radT), thsad=\(dirt.thsad), "
+                          + "tm=\(dirt.spotTrueMotion ? "True" : "False"))")
             }
         }
         if !body.isEmpty {

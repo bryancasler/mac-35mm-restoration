@@ -158,3 +158,10 @@ x86-only), while SpotLess rides NEON-optimized MVTools + zsmooth. If spike S2 sh
 RemoveDirt unusably slow or clearly worse, flip the default to SpotLess and note why.
 SpotLess's preferred temporal-median provider is **zsmooth** (MIT, official arm64 binaries) —
 provision it instead of/alongside dubhater's TemporalMedian.
+
+*Amendment to ADR-6 (2026-07-18):* the pinned MVTools v24 prebuilt silently no-ops
+Compensate/Flow under VapourSynth R77 (frames pass through unchanged — the worst
+failure mode: no error, no cleaning). MVTools is now **built from source** (dubhater
+master, meson; brew deps meson+ninja+fftw+pkgconf) alongside DeScratch, and the doctor
+runs a functional no-op canary so a silently-broken motion stack can never pass setup
+again. "Pin a known-good version" is amended to "pin + functionally verify".
