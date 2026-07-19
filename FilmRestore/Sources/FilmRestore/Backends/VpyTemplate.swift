@@ -2,7 +2,7 @@ import Foundation
 
 /// M4 restoration-filter settings (validated pipeline order is fixed:
 /// deflicker → scratch → dirt; each stage independently toggleable).
-struct ScratchSettings: Equatable {
+struct ScratchSettings: Equatable, Codable {
     var enabled = true      // on by default (2026-07-17): the point of the app
 
     static var off: ScratchSettings {
@@ -20,7 +20,7 @@ struct ScratchSettings: Equatable {
     var polarity: ScratchPolarity = .both  // plugin default is DARK-only, which
                                            // on animation hunts ink lines
 
-    enum ScratchPolarity: String, CaseIterable, Identifiable {
+    enum ScratchPolarity: String, CaseIterable, Identifiable, Codable {
         case dark, bright, both
         var id: String { rawValue }
         var modeY: Int { self == .dark ? 1 : self == .bright ? 2 : 3 }
@@ -36,7 +36,7 @@ struct ScratchSettings: Equatable {
     var oddMaxwidth: Int { maxwidth | 1 }  // UI safety: force odd
 }
 
-struct DirtSettings: Equatable {
+struct DirtSettings: Equatable, Codable {
     var enabled = true      // on by default (2026-07-17)
 
     static var off: DirtSettings {
@@ -66,7 +66,7 @@ struct DirtSettings: Equatable {
     var mcUseML = false         // AI-assisted scratch masks (BOPBTL U-Net, ADR-14)
     var mcProtectDark = false   // shield dark line art from ML inpaint (animation)
 
-    enum Polarity: String, CaseIterable, Identifiable {
+    enum Polarity: String, CaseIterable, Identifiable, Codable {
         case both, dark, bright
         var id: String { rawValue }
         var label: String {
@@ -78,7 +78,7 @@ struct DirtSettings: Equatable {
         }
     }
 
-    enum Engine: String, CaseIterable, Identifiable {
+    enum Engine: String, CaseIterable, Identifiable, Codable {
         case maskClean, removeDirtMC, removeDirt, spotLess
         var id: String { rawValue }
         var label: String {

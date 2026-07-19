@@ -442,3 +442,39 @@ final class AnimationSafetyTests: XCTestCase {
         XCTAssertTrue(vpy.contains("ml_mask=_ml"))
     }
 }
+
+final class SettingsStoreTests: XCTestCase {
+    private func sampleBundle() -> SettingsBundle {
+        var scratch = ScratchSettings(); scratch.polarity = .bright; scratch.minlen = 60
+        var dirt = DirtSettings(); dirt.mcSensitivity = 20; dirt.mcUseML = true
+        var deflicker = DeflickerSettings(); deflicker.size = 19
+        var encode = EncodeSettings(); encode.quality = 75
+        return SettingsBundle(deflicker: deflicker, scratch: scratch, dirt: dirt,
+                              encode: encode, passes: 2, sbsDiffColumn: true)
+    }
+
+    func testRoundTrip() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fr_settings_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let bundle = sampleBundle()
+        SettingsStore.save(bundle, to: url)
+        let loaded = SettingsStore.load(from: url)
+        XCTAssertEqual(loaded, bundle)
+        XCTAssertEqual(loaded?.scratch.polarity, .bright)
+        XCTAssertEqual(loaded?.passes, 2)
+    }
+
+    func testSidecarPathBesideSource() {
+        let sidecar = SettingsStore.sidecarURL(for: URL(fileURLWithPath: "/tmp/My Scan.mkv"))
+        XCTAssertEqual(sidecar.path, "/tmp/My Scan.mkv.filmrestore.json")
+    }
+
+    func testCorruptFileLoadsNil() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fr_bad_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try "not json".write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertNil(SettingsStore.load(from: url))
+    }
+}

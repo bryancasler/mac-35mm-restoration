@@ -1,12 +1,12 @@
 import Foundation
 
 /// User-facing filter/encode settings (M2: ffmpeg-only, phase-1 command).
-struct DeflickerSettings: Equatable {
+struct DeflickerSettings: Equatable, Codable {
     var enabled = true
     var size = 10            // 2...129
     var mode: Mode = .pm
 
-    enum Mode: String, CaseIterable, Identifiable {
+    enum Mode: String, CaseIterable, Identifiable, Codable {
         case pm, am, median
         var id: String { rawValue }
         var label: String {
@@ -21,13 +21,13 @@ struct DeflickerSettings: Equatable {
     var filterString: String { "deflicker=mode=\(mode.rawValue):size=\(size)" }
 }
 
-struct EncodeSettings: Equatable {
+struct EncodeSettings: Equatable, Codable {
     var codec: VideoCodec = .hevcVideoToolbox
     var quality = 60         // hevc_videotoolbox -q:v (1...100)
     var x265CRF = 18         // advanced
     var audio: AudioMode = .flac
 
-    enum VideoCodec: String, CaseIterable, Identifiable {
+    enum VideoCodec: String, CaseIterable, Identifiable, Codable {
         case hevcVideoToolbox, x265, ffv1
         var id: String { rawValue }
         var label: String {
@@ -39,7 +39,7 @@ struct EncodeSettings: Equatable {
         }
     }
 
-    enum AudioMode: String, CaseIterable, Identifiable {
+    enum AudioMode: String, CaseIterable, Identifiable, Codable {
         case flac, copy
         var id: String { rawValue }
         var label: String { self == .flac ? "FLAC (compress PCM)" : "Passthrough (copy)" }

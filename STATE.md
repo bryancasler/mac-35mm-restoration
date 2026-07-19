@@ -14,8 +14,9 @@
 - Last updated: 2026-07-17
 
 ## Next actions (in order)
-1. **User:** GUI eyeball — open release/FilmRestore.dmg (or `swift build`), drag the
-   scan in, test clip, A/B flip, mark-mode, quick-sample side-by-side reel.
+1. **User:** feel pass on the revised UI (2026-07-18): Source→Tune→Preview→Restore
+   sections, Advanced disclosures, persistent settings (global + per-film sidecar
+   `<film>.filmrestore.json`), A/B player is a real window, status-bar progress.
 2. Perf question mostly resolved (2026-07-18): slowdowns reproduce with interactive
    load (GeForceNOW streaming etc., load avg 14+) — benchmark only on a quiet
    machine. Lut-accumulation hypothesis demoted, not disproven; matrix still in

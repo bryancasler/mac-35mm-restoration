@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 
@@ -34,9 +35,49 @@ final class AppModel: ObservableObject {
     @Published var lastOutput: URL?
     @Published var testClipBytesPerSecond: Double?  // ADR-10 size refinement
 
+    @Published var settingsRestoredFromSidecar = false
+
     private var jobTask: Task<Void, Never>?
     private let backend = FFmpegBackend()
     private let vsBackend = VapourSynthBackend()
+    private var saveDebounce: AnyCancellable?
+    private var lastSavedBundle: SettingsBundle?
+
+    init() {
+        if let saved = SettingsStore.load(from: SettingsStore.globalURL) {
+            apply(bundle: saved)
+        }
+        // debounce every model change into a settings save; skipped while a job
+        // spams progress and when nothing durable actually changed
+        saveDebounce = objectWillChange
+            .debounce(for: .seconds(1.0), scheduler: DispatchQueue.main)
+            .sink { [weak self] in self?.persistSettings() }
+    }
+
+    private var currentBundle: SettingsBundle {
+        SettingsBundle(deflicker: deflicker, scratch: scratch, dirt: dirt,
+                       encode: encode, passes: passes, sbsDiffColumn: sbsDiffColumn)
+    }
+
+    private func apply(bundle: SettingsBundle) {
+        deflicker = bundle.deflicker
+        scratch = bundle.scratch
+        dirt = bundle.dirt
+        encode = bundle.encode
+        passes = bundle.passes
+        sbsDiffColumn = bundle.sbsDiffColumn
+    }
+
+    private func persistSettings() {
+        let bundle = currentBundle
+        guard bundle != lastSavedBundle else { return }
+        lastSavedBundle = bundle
+        AppDirs.ensureAll()
+        SettingsStore.save(bundle, to: SettingsStore.globalURL)
+        if let media {
+            SettingsStore.save(bundle, to: SettingsStore.sidecarURL(for: media.url))
+        }
+    }
 
     var isBusy: Bool { jobLabel != nil }
 
@@ -66,6 +107,14 @@ final class AppModel: ObservableObject {
             do {
                 let info = try await Task.detached { try Probe.probe(url) }.value
                 self.media = info
+                // per-film sidecar restores this scan's last tuning session
+                if let sidecar = SettingsStore.load(from: SettingsStore.sidecarURL(for: url)) {
+                    self.apply(bundle: sidecar)
+                    self.settingsRestoredFromSidecar = true
+                } else {
+                    self.settingsRestoredFromSidecar = false
+                }
+                self.lastSavedBundle = self.currentBundle
                 let defaultStart = min(600.0, max(0, info.durationSeconds - 60))
                 self.clipStartString = Self.format(seconds: defaultStart)
             } catch {
@@ -175,9 +224,11 @@ final class AppModel: ObservableObject {
                     let mlPath = try await self.runMLMaskIfNeeded(
                         media: media, startFrame: 0, frames: media.totalFrames,
                         label: "fullrun")
+                    var runScratch = self.scratch; runScratch.markOnly = false
+                    var runDirt = self.dirt; runDirt.mcShowMask = false
                     let plan = VapourSynthBackend.fullRunPlan(
-                        media: media, deflicker: self.deflicker, scratch: self.scratch,
-                        dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
+                        media: media, deflicker: self.deflicker, scratch: runScratch,
+                        dirt: runDirt, encode: self.encode, scriptsDir: scripts,
                         passes: self.passes, mlMaskPath: mlPath)
                     self.jobLabel = "Restoring full video (VapourSynth chain, \(self.passes)×)…"
                     self.jobProgress = nil
@@ -238,7 +289,8 @@ final class AppModel: ObservableObject {
             segments = SideBySide.quickSampleSegments(duration: media.durationSeconds,
                                                       using: &rng)
         } else {
-            guard let start = Self.parse(timestamp: sbsStartString),
+            // shared start field with the A/B clip flow (UI/UX revision)
+            guard let start = Self.parse(timestamp: clipStartString),
                   let len = Double(sbsLengthString), len > 0 else {
                 errorMessage = "Bad side-by-side start/length"
                 return
@@ -407,9 +459,11 @@ final class AppModel: ObservableObject {
                     }
                     let out: URL
                     if self.needsVS, let scripts = VapourSynthBackend.scriptsDir {
+                        var qScratch = self.scratch; qScratch.markOnly = false
+                        var qDirt = self.dirt; qDirt.mcShowMask = false
                         let plan = VapourSynthBackend.fullRunPlan(
-                            media: m, deflicker: self.deflicker, scratch: self.scratch,
-                            dirt: self.dirt, encode: self.encode, scriptsDir: scripts,
+                            media: m, deflicker: self.deflicker, scratch: qScratch,
+                            dirt: qDirt, encode: self.encode, scriptsDir: scripts,
                             passes: self.passes)
                         out = try await self.vsBackend.run(
                             plan: plan,

@@ -119,7 +119,18 @@ struct FilmRestoreApp: App {
         WindowGroup("FilmRestore") {
             ContentView()
                 .environmentObject(model)
-                .onAppear { AppDirs.ensureAll() }
+                .onAppear {
+                    AppDirs.ensureAll()
+                    // dev/verification convenience: --open <file>
+                    if let idx = CommandLine.arguments.firstIndex(of: "--open"),
+                       CommandLine.arguments.count > idx + 1 {
+                        model.load(url: URL(fileURLWithPath: CommandLine.arguments[idx + 1]))
+                    }
+                }
+        }
+        Window("A/B Player", id: "abplayer") {
+            ABPlayerWindow()
+                .environmentObject(model)
         }
     }
 }
