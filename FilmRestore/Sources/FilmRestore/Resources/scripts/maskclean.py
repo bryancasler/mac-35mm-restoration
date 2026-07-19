@@ -43,7 +43,8 @@ def _luma(clip):
 def maskclean(clip, t1=24, t2=22, polarity="both",
               min_size=2, max_size=600, dilate=1, sad_max=None, adj_radius=3,
               chroma=True, t1c=12, t2c=10,
-              preview_mask=False, blob_filter=True, return_mask=False,
+              preview_mask=False, preview_style="overlay",
+              blob_filter=True, return_mask=False,
               ml_mask=None, ml_protect_dark=False):
     if clip.format.color_family != vs.YUV or clip.format.bits_per_sample != 8:
         raise ValueError("maskclean: 8-bit YUV input only (pipeline is yuv420p)")
@@ -205,6 +206,37 @@ def maskclean(clip, t1=24, t2=22, polarity="both",
 
     if return_mask:
         return mask
+
+    if preview_mask and preview_style == "circles" and _HAVE_CV2:
+        # ring around every detection — far more visible than the tint overlay
+        # for eyeball inspection (red = temporal/chroma dirt, yellow = ML)
+        ml_src = [ml_mask] if ml_mask is not None else []
+
+        def _rings(n, f):
+            fout = f[0].copy()
+            planes = [np.asarray(fout[i]) for i in range(3)]
+            sub_w = fout.format.subsampling_w
+            sub_h = fout.format.subsampling_h
+
+            def draw(mask_arr, yuv):
+                count, _, stats, centroids = cv2.connectedComponentsWithStats(
+                    (mask_arr > 0).astype(np.uint8), connectivity=8)
+                for i in range(1, count):
+                    cx, cy = centroids[i]
+                    r = max(stats[i, cv2.CC_STAT_WIDTH],
+                            stats[i, cv2.CC_STAT_HEIGHT]) // 2 + 14
+                    cv2.circle(planes[0], (int(cx), int(cy)), int(r), yuv[0], 4)
+                    ccx, ccy = int(cx) >> sub_w, int(cy) >> sub_h
+                    cr = max(2, int(r) >> max(sub_w, sub_h))
+                    cv2.circle(planes[1], (ccx, ccy), cr, yuv[1], 2)
+                    cv2.circle(planes[2], (ccx, ccy), cr, yuv[2], 2)
+
+            draw(np.asarray(f[1][0]), (81, 90, 240))          # red rings
+            if len(f) > 2:
+                draw(np.asarray(f[2][0]), (210, 16, 146))     # yellow rings (ML)
+            return fout
+
+        return core.std.ModifyFrame(clip, [clip, mask] + ml_src, _rings)
 
     if preview_mask:
         # red overlay where dirt is detected (Resolve's "Show Repair Mask");

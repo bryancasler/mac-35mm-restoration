@@ -63,6 +63,7 @@ struct DirtSettings: Equatable, Codable {
     var mcPolarity: Polarity = .both
     var mcMaxSize = 600         // blobs bigger than this are objects, not dirt
     var mcShowMask = false      // red-overlay detection preview
+    var mcCircleMask = false    // ring outlines around detections (more visible)
     var mcUseML = false         // AI-assisted scratch masks (BOPBTL U-Net, ADR-14)
     var mcProtectDark = false   // shield dark line art from ML inpaint (animation)
 
@@ -157,7 +158,8 @@ enum VpyTemplate {
                 body.append("clip = maskclean(clip, t1=\(dirt.mcSensitivity), "
                           + "polarity=\(pyString(dirt.mcPolarity.rawValue)), "
                           + "max_size=\(dirt.mcMaxSize)"
-                          + (dirt.mcShowMask ? ", preview_mask=True" : "")
+                          + (dirt.mcCircleMask ? ", preview_mask=True, preview_style=\"circles\""
+                             : dirt.mcShowMask ? ", preview_mask=True" : "")
                           + mlArg
                           + ")")
             case .removeDirtMC:

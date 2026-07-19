@@ -33,6 +33,8 @@ struct PreviewSection: View {
                             .help("Preview renders highlight what DeScratch detects instead of fixing it")
                         Toggle("Show dirt mask", isOn: $model.dirt.mcShowMask)
                             .help("Preview renders overlay MaskClean detections in red (AI regions yellow)")
+                        Toggle("Circle detections", isOn: $model.dirt.mcCircleMask)
+                            .help("Draw obvious rings around every detection (red = dirt, yellow = AI) — easier to spot than the tint overlay")
                         Toggle("Frame counter", isOn: $model.showFrameCounter)
                             .help("Burn the absolute SOURCE frame number into previews — reference an exact frame when reporting a defect")
                     }

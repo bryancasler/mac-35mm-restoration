@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     @Published var testClipBytesPerSecond: Double?  // ADR-10 size refinement
 
     @Published var settingsRestoredFromSidecar = false
+    @Published var lastClipStartFrame = 0      // absolute frame of the last A/B clip's first frame
 
     private var jobTask: Task<Void, Never>?
     private let backend = FFmpegBackend()
@@ -159,6 +160,7 @@ final class AppModel: ObservableObject {
                 passes: passes, frameCounter: showFrameCounter)
             errorMessage = nil
             let startFrame = Int((start * media.fps).rounded())
+            self.lastClipStartFrame = startFrame
             let clipFrames = Int((clipDuration * media.fps).rounded())
             jobTask = Task {
                 do {
@@ -502,6 +504,39 @@ final class AppModel: ObservableObject {
         if let e = error as? JobError, case .cancelled = e { return }
         lastFailedJob = jobLabel
         errorMessage = error.localizedDescription
+    }
+
+    /// Clipboard payload for user-identified defects: everything a Claude Code
+    /// session needs to target them — film, frames, coordinates, settings.
+    func copyDefectReport(marks: [DefectMark]) {
+        guard let media else { return }
+        var lines: [String] = []
+        lines.append("## FilmRestore defect report — user-identified defects")
+        lines.append("")
+        lines.append("Paste this into the Claude Code session. Ask it to add these frames as")
+        lines.append("targeted samples in the S7 visual loop (spikes/s7_visual_loop/) and")
+        lines.append("iterate until the marked defects are removed without regressions.")
+        lines.append("")
+        lines.append("**Source:** \(media.url.path)")
+        lines.append("**Video:** \(media.width)x\(media.height) @ \(media.fpsNum)/\(media.fpsDen) fps")
+        lines.append("")
+        lines.append("**Marked defects (source frame @ pixel x,y — origin top-left):**")
+        for m in marks.sorted(by: { ($0.frame, $0.x) < ($1.frame, $1.x) }) {
+            lines.append("- frame \(m.frame) @ (\(m.x), \(m.y))")
+        }
+        lines.append("")
+        lines.append("**Settings at time of marking:**")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(currentBundle),
+           let json = String(data: data, encoding: .utf8) {
+            lines.append("```json")
+            lines.append(json)
+            lines.append("```")
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+        lastStats = "Defect report copied — \(marks.count) marks on the clipboard"
     }
 
     // MARK: debug report

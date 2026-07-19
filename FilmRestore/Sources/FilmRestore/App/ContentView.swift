@@ -185,8 +185,13 @@ struct ABPlayerWindow: View {
         Group {
             if let a = model.abClipA, let b = model.abClipB, let m = model.media {
                 VStack(spacing: 0) {
-                    ABPlayerView(clipA: a, clipB: b, fpsNum: m.fpsNum, fpsDen: m.fpsDen)
-                    Text("SPACE flip A/B · P pause · ⇦⇨ frame-step")
+                    ABPlayerView(clipA: a, clipB: b, fpsNum: m.fpsNum, fpsDen: m.fpsDen,
+                                 clipStartFrame: model.lastClipStartFrame,
+                                 videoWidth: m.width, videoHeight: m.height,
+                                 onCopyReport: { marks in
+                                     Task { @MainActor in model.copyDefectReport(marks: marks) }
+                                 })
+                    Text("SPACE flip · P pause · ⇦⇨ step · paused click = mark defect · U undo · C copy report")
                         .font(.caption).foregroundStyle(.secondary)
                         .padding(6)
                 }
