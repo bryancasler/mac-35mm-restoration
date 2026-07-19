@@ -186,6 +186,22 @@ struct ContentView: View {
                     ForEach(DirtSettings.Engine.allCases) { Text($0.label).tag($0) }
                 }
                 switch model.dirt.engine {
+                case .maskClean:
+                    HStack {
+                        Stepper("Sensitivity: \(44 - model.dirt.mcSensitivity)",
+                                value: .init(get: { 44 - model.dirt.mcSensitivity },
+                                             set: { model.dirt.mcSensitivity = 44 - $0 }),
+                            in: 4...32)
+                        Stepper("Max spot size: \(model.dirt.mcMaxSize)px",
+                                value: $model.dirt.mcMaxSize, in: 100...2000, step: 100)
+                    }
+                    Picker("Detect", selection: $model.dirt.mcPolarity) {
+                        ForEach(DirtSettings.Polarity.allCases) { Text($0.label).tag($0) }
+                    }
+                    Toggle("Show detection mask (red overlay, preview only)",
+                           isOn: $model.dirt.mcShowMask)
+                    Text("Detects dirt with motion-compensated evidence, repairs only inside the mask — everything else passes through untouched.")
+                        .font(.caption).foregroundStyle(.secondary)
                 case .removeDirtMC:
                     Stepper("Strength: \(model.dirt.strength)",
                             value: $model.dirt.strength, in: 1...30)

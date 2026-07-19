@@ -28,7 +28,7 @@ struct DirtSettings: Equatable {
         var d = DirtSettings(); d.enabled = false; return d
     }
 
-    var engine: Engine = .removeDirtMC
+    var engine: Engine = .maskClean
 
     // RemoveDirt MC / classic strength: the `noise` limit of
     // RestoreMotionBlocks' NPC detector (johnmeyer used 6-30; higher = stronger)
@@ -43,12 +43,31 @@ struct DirtSettings: Equatable {
     var radT = 1            // 1...3
     var spotTrueMotion = false  // community consensus: off tracks fast motion better
 
-    enum Engine: String, CaseIterable, Identifiable {
-        case removeDirtMC, removeDirt, spotLess
+    // MaskClean (detect→mask→conceal; S6-validated defaults)
+    var mcSensitivity = 24      // detector t1: lower = more sensitive (12...40)
+    var mcPolarity: Polarity = .both
+    var mcMaxSize = 600         // blobs bigger than this are objects, not dirt
+    var mcShowMask = false      // red-overlay detection preview
+
+    enum Polarity: String, CaseIterable, Identifiable {
+        case both, dark, bright
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .removeDirtMC: return "RemoveDirt MC (recommended)"
+            case .both: return "Dark + bright"
+            case .dark: return "Dark only (prints)"
+            case .bright: return "Bright only (negative scans)"
+            }
+        }
+    }
+
+    enum Engine: String, CaseIterable, Identifiable {
+        case maskClean, removeDirtMC, removeDirt, spotLess
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .maskClean: return "MaskClean (recommended — detect & conceal)"
+            case .removeDirtMC: return "RemoveDirt MC (aggressive)"
             case .removeDirt: return "RemoveDirt (classic)"
             case .spotLess: return "SpotLess (median, slower)"
             }
@@ -103,6 +122,16 @@ enum VpyTemplate {
         }
         if dirt.enabled {
             switch dirt.engine {
+            case .maskClean:
+                // FilmRestore's own detect→mask→conceal engine (ADR-13):
+                // bit-exact passthrough outside the defect mask. S6-validated:
+                // static precision 0.97 / recall 0.95; motion 0.54 / 0.70.
+                lines.append("from maskclean import maskclean")
+                body.append("clip = maskclean(clip, t1=\(dirt.mcSensitivity), "
+                          + "polarity=\(pyString(dirt.mcPolarity.rawValue)), "
+                          + "max_size=\(dirt.mcMaxSize)"
+                          + (dirt.mcShowMask ? ", preview_mask=True" : "")
+                          + ")")
             case .removeDirtMC:
                 // johnmeyer's RemoveDirtMC (docs/research/1-vs-community.md):
                 // motion-compensate BEFORE detection so cleaning keeps working

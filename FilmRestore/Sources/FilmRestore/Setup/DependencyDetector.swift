@@ -14,6 +14,7 @@ struct DependencyStatus {
     var plugins: [String: Bool] = [:]   // dylib name → present
     var descratch = false
     var mvtools = false
+    var pysite = false      // numpy+cv2 for maskclean's blob stage (optional but recommended)
 
     var coreOK: Bool {
         if case .ok = ffmpeg { return true }
@@ -66,6 +67,8 @@ enum DependencyDetector {
             atPath: pluginDir.appendingPathComponent(PluginSpec.descratchDylib).path)
         s.mvtools = FileManager.default.fileExists(
             atPath: pluginDir.appendingPathComponent(PluginSpec.mvtoolsDylib).path)
+        s.pysite = FileManager.default.fileExists(
+            atPath: AppDirs.appSupport.appendingPathComponent("pysite/cv2").path)
         return s
     }
 

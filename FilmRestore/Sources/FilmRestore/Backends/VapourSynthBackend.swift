@@ -51,8 +51,15 @@ final class VapourSynthBackend {
         let vspipe = Process()
         vspipe.executableURL = URL(fileURLWithPath: DependencyDetector.vspipe)
         vspipe.arguments = ["-c", "y4m", vpyURL.path, "-"]
-        vspipe.environment = ProcessInfo.processInfo.environment.merging(
-            ["VAPOURSYNTH_EXTRA_PLUGIN_PATH": DependencyDetector.pluginDir.path]) { _, n in n }
+        // pysite: app-managed numpy/opencv for maskclean's blob stage (the
+        // script degrades gracefully if absent)
+        var vsEnv = ["VAPOURSYNTH_EXTRA_PLUGIN_PATH": DependencyDetector.pluginDir.path]
+        let pysite = AppDirs.appSupport.appendingPathComponent("pysite").path
+        if FileManager.default.fileExists(atPath: pysite) {
+            let existing = ProcessInfo.processInfo.environment["PYTHONPATH"]
+            vsEnv["PYTHONPATH"] = existing.map { "\(pysite):\($0)" } ?? pysite
+        }
+        vspipe.environment = ProcessInfo.processInfo.environment.merging(vsEnv) { _, n in n }
 
         let ffmpeg = Process()
         ffmpeg.executableURL = URL(fileURLWithPath: Tools.ffmpeg)

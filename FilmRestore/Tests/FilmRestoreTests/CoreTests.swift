@@ -149,7 +149,7 @@ final class VpyTemplateTests: XCTestCase {
         // validated order: deflicker → scratch → dirt (CLAUDE.md, do not re-derive)
         let d = vpy.range(of: "deflicker(clip")!.lowerBound
         let s = vpy.range(of: "descratch.DeScratch")!.lowerBound
-        let r = vpy.range(of: "remove_dirt_mc(clip")!.lowerBound
+        let r = vpy.range(of: "maskclean(clip")!.lowerBound
         XCTAssertLessThan(d, s)
         XCTAssertLessThan(s, r)
         XCTAssertTrue(vpy.contains("core.bs.VideoSource"))
@@ -199,6 +199,7 @@ final class VpyTemplateTests: XCTestCase {
 
     func testDirtEngineRendering() {
         var dirt = DirtSettings(); dirt.strength = 12
+        dirt.engine = .removeDirtMC
         let mc = VpyTemplate.render(source: src, trimRange: nil,
                                     deflicker: DeflickerSettings(), scratch: .off,
                                     dirt: dirt, scriptsDir: scripts)
@@ -385,5 +386,27 @@ final class DiffColumnTests: XCTestCase {
         XCTAssertTrue(joined.contains("blend=all_mode=difference"))
         XCTAssertTrue(joined.contains("hstack=inputs=3:shortest=1"))
         XCTAssertEqual(joined.components(separatedBy: "-c:v").count - 1, 1, "still one encode")
+    }
+}
+
+final class MaskCleanTests: XCTestCase {
+    private let scripts = URL(fileURLWithPath: "/tmp/scripts")
+    private var src: URL { URL(fileURLWithPath: "/tmp/scan.mkv") }
+
+    func testMaskCleanIsDefaultAndRenders() {
+        XCTAssertEqual(DirtSettings().engine, .maskClean)
+        var dirt = DirtSettings(); dirt.mcSensitivity = 20
+        dirt.mcPolarity = .dark; dirt.mcMaxSize = 800
+        let vpy = VpyTemplate.render(source: src, trimRange: nil,
+                                     deflicker: DeflickerSettings(), scratch: .off,
+                                     dirt: dirt, scriptsDir: scripts)
+        XCTAssertTrue(vpy.contains("from maskclean import maskclean"))
+        XCTAssertTrue(vpy.contains(#"maskclean(clip, t1=20, polarity="dark", max_size=800)"#))
+        XCTAssertFalse(vpy.contains("preview_mask"))
+        dirt.mcShowMask = true
+        let preview = VpyTemplate.render(source: src, trimRange: nil,
+                                         deflicker: DeflickerSettings(), scratch: .off,
+                                         dirt: dirt, scriptsDir: scripts)
+        XCTAssertTrue(preview.contains("preview_mask=True"))
     }
 }

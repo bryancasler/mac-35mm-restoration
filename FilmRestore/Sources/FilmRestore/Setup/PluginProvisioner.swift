@@ -74,6 +74,22 @@ final class PluginProvisioner {
         try FileManager.default.copyItem(at: dylib, to: dest)
     }
 
+    /// pysite: numpy + opencv-python-headless into an app-managed dir via
+    /// `pip --target` (PEP-668-safe — Homebrew's tree untouched, ADR-6 pattern).
+    /// Powers maskclean's connected-component blob stage.
+    func installPysite() async throws {
+        let pysite = AppDirs.appSupport.appendingPathComponent("pysite")
+        try FileManager.default.createDirectory(at: pysite, withIntermediateDirectories: true)
+        onStatus?("Installing numpy + OpenCV (pysite)…")
+        let python = "/opt/homebrew/opt/python@3.14/bin/python3.14"
+        let r = runSync(python, ["-m", "pip", "install", "--target", pysite.path,
+                                 "--upgrade", "numpy", "opencv-python-headless"])
+        guard r.status == 0 else {
+            throw ProvisionError.buildFailed("pysite pip install", String(r.output.suffix(600)))
+        }
+        onStatus?("pysite installed")
+    }
+
     /// MVTools source build (dubhater master, meson): the only darwin-aarch64
     /// prebuilt (v24) silently returns input frames unchanged from
     /// Compensate/Flow on VS R77 — the doctor's no-op canary guards this.

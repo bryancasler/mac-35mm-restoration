@@ -208,3 +208,24 @@ raw inter-frame motion. Consequences:
 Also resolved: docs/perf-vs-fullrun.md — the "system-wide 25× slowdown" reproduced with
 GeForceNOW streaming + Chrome/Discord active (load avg 14–18); benchmarks are only
 valid on a quiet machine. Graph-scaling hypothesis demoted, not yet disproven.
+
+## S6 — MaskClean detector validation (2026-07-18): PASS
+
+Harness: `s6_maskclean/harness.vpy` — synthetic dust (4–10 px radius disks, dark+bright,
+12/frame, deterministic per-frame seeds) overlaid on a PRE-CLEANED base (the raw print's
+real dirt otherwise mislabels correct detections as false positives — measured 4.5× FP
+inflation), visible-dust ground truth (≥32 contrast), boundary-tolerant scoring (4 px
+halo). 240 frames per segment on the real scan.
+
+| Segment | Precision | Recall | FP pixel rate |
+|---|---|---|---|
+| static (w50000) | 0.967 | 0.950 | 0.00002 |
+| heavy motion (w70000) | 0.538 | 0.703 | 0.00071 |
+
+Plan targets (>90% recall on ≥8 px dust, <1% FP rate): **met on static, FP met
+everywhere**; motion recall 0.70 is the expected MC-residual tradeoff (pro tools expose
+the same degradation as motion-safety controls). Defaults locked: t1=24, t2=14,
+min_size=2 opening, adjacent-suppression radius 3, max_size 600.
+Negative results recorded in ADR-13 (SAD guard self-suppression; threshold-only tuning
+plateau). Engine lineup + measurements for RemoveDirtMC in the 2026-07-18 correction
+above. fps numbers deferred — machine under interactive load all evening.

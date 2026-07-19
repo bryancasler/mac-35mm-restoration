@@ -80,6 +80,7 @@ enum Entry {
                     try await p.provisionPrebuilts()
                     try await p.buildDeScratch()
                     try await p.buildMVTools()
+                    try await p.installPysite()
                 } catch {
                     print("PROVISION FAILED: \(error.localizedDescription)")
                     exit(1)

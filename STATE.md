@@ -28,9 +28,10 @@
 - None blocking. **MVTools v24 prebuilt was silently broken** (Compensate/Flow
   no-op on VS R77 → SpotLess never worked; RESULTS 2026-07-18 correction) — now
   built from source; doctor has a no-op canary. Quality overhaul underway per
-  approved plan (~/.claude/plans/…): Phase 1 (RemoveDirtMC) done, Phase 2
-  (MaskClean detect→mask→conceal) + Phase 3 (ML masks) next; research in
-  docs/research/.
+  approved plan (~/.claude/plans/…): Phases 1+2 done — MaskClean
+  (detect→mask→conceal, ADR-13) is the default dirt engine, S6-validated
+  (static P=.97/R=.95). Phase 3 (ML mask tier, BOPBTL U-Net) next; research
+  in docs/research/. pysite (numpy+cv2) provisioned.
 
 ## Environment facts (verified 2026-07-17)
 - ffmpeg 8.1.2 (Homebrew; no drawtext filter), Xcode 26.6 (Swift 6.3.3),

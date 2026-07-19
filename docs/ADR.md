@@ -165,3 +165,31 @@ failure mode: no error, no cleaning). MVTools is now **built from source** (dubh
 master, meson; brew deps meson+ninja+fftw+pkgconf) alongside DeScratch, and the doctor
 runs a functional no-op canary so a silently-broken motion stack can never pass setup
 again. "Pin a known-good version" is amended to "pin + functionally verify".
+
+## ADR-13: Dirt removal = detect → mask → conceal (MaskClean engine)
+
+Adopted 2026-07-18 after four-angle research (docs/research/) and the user verdict that
+classic in-place filters were "hit and miss no matter what settings". The architecture
+every professional tool converged on (DVO Dust, MTI Shine, Resolve ADR, DIAMANT):
+1. **Detect** dirt as motion-compensated temporal spikes (Kokaram SDIa family:
+   both MC-neighbor diffs > t1, neighbors agree within t2, same deviation sign),
+   with polarity restriction (dark/bright/both).
+2. **Mask hygiene**: morphological opening (grain rejection), optional
+   connected-component area gating (numpy/cv2 from app-managed pysite; graceful
+   fallback), BBC-patent adjacent-frame suppression (dirt is temporally isolated),
+   scene-cut zeroing.
+3. **Conceal** only inside the (dilated, feathered) mask with the median of
+   MC-aligned (prev, cur, next); every pixel outside the mask passes through
+   BIT-EXACT — the "real detail gets eaten" failure mode is impossible by
+   construction.
+4. **Reviewable**: red-overlay mask preview (Resolve's Show Repair Mask) replaces
+   blind threshold tuning; `return_mask` exposes the mask for future fusion with
+   ML detectors (ADR-14, planned).
+Validated by the S6 synthetic-defect harness (spikes/s6_maskclean/): visible-dust
+ground truth, boundary-tolerant scoring, pre-cleaned base. Static: precision 0.967 /
+recall 0.950 / FP 0.002%. Heavy motion: 0.538 / 0.703 / 0.07%. Two negative results
+worth keeping: an mv.Mask SAD occlusion guard suppresses its own detections (defects
+inflate the SAD it thresholds — motion evidence must exclude the current frame), and
+threshold tuning alone cannot fix precision (the FP floor is structural, solved by
+the safety stages, not thresholds). MaskClean is the default dirt engine; RemoveDirtMC
+(johnmeyer), classic RemoveDirt, and SpotLess remain selectable.

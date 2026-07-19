@@ -42,6 +42,8 @@ struct SetupView: View {
                               status.descratch)
                         check("MVTools — motion estimation (built from source; prebuilt v24 is broken on VS R77)",
                               status.mvtools)
+                        check("numpy + OpenCV — MaskClean blob analysis (optional, recommended)",
+                              status.pysite)
                         HStack {
                             if !status.pluginsOK {
                                 Button("Download plugins…") { showApproval = true }
@@ -54,6 +56,10 @@ struct SetupView: View {
                             if !status.mvtools {
                                 Button("Build MVTools") { buildMVTools() }
                                     .disabled(working != nil || isMissing(status.mesonNinja))
+                            }
+                            if !status.pysite {
+                                Button("Install numpy + OpenCV") { installPysite() }
+                                    .disabled(working != nil)
                             }
                             if let working { ProgressView().controlSize(.small); Text(working) }
                         }
@@ -162,6 +168,17 @@ struct SetupView: View {
         provisioner.onStatus = { msg in Task { @MainActor in working = msg } }
         Task {
             do { try await provisioner.provisionPrebuilts() }
+            catch { errorMessage = error.localizedDescription }
+            working = nil
+            recheck()
+        }
+    }
+
+    private func installPysite() {
+        errorMessage = nil
+        provisioner.onStatus = { msg in Task { @MainActor in working = msg } }
+        Task {
+            do { try await provisioner.installPysite() }
             catch { errorMessage = error.localizedDescription }
             working = nil
             recheck()
