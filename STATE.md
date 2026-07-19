@@ -26,9 +26,11 @@
 4. Someday: Developer ID signing + notarization (README has the commands).
 
 ## Blockers / open questions
-- S7 visual loop CONCLUDED (8 cycles; see s7_visual_loop/SCORES.md conclusion):
-  5 product improvements shipped, safety validated on 8 content classes. Resumable
-  once the user supplies a timestamp for the gouge-heavy frame (dog behind planks).
+- S7 visual loop: leg 1 (8 cycles) + leg 2 (5 cycles, 10:00–11:00 window) both
+  concluded — see s7_visual_loop/SCORES.md. Leg 2 shipped chroma-blind-spot fix
+  (colored flecks now detected). All automated hunts now land on content
+  lookalikes (correctly preserved). Loop resumes instantly when the user pastes
+  an A/B-player defect report (pause → click defects → C copies frame@x,y list).
 - None blocking. **MVTools v24 prebuilt was silently broken** (Compensate/Flow
   no-op on VS R77 → SpotLess never worked; RESULTS 2026-07-18 correction) — now
   built from source; doctor has a no-op canary. Quality overhaul underway per

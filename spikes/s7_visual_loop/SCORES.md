@@ -42,6 +42,20 @@ gashes. Frame-counter overlay shipped so future reports can cite exact frames.
 | 9 | chroma spike test (U/V, t1c=12, t2c=10) OR-ed into detector | tenD flecks STILL survive — blob guard's luma-only anomaly test drops the chroma detections | n/a |
 | 10 | blob guard extended with chroma anomaly evidence | tenD: most blue flecks removed; 1–2 faint persistent traces remain (spatial-repair class); motion sentinel clean | static .98·.95 unchanged / motion P .586 R .800 FP .067% (small P cost for a new detectable class) |
 | 11 | tenA/tenC review + shape-specific gash scan of the full minute | tenA/tenC mid-frames: defects cleaned, no gashes visible (sporadic class — mid-frame sampling misses them). Gash scan top cluster (15026–15076) = banister glint rays — CONTENT, correctly preserved; frame's real light dashes cleaned. 3rd automated hunt → 3rd lookalike: user's new click-to-mark tool is the right instrument for a positive gash case. No change | unchanged |
+| 12 | large-dark-transient scan vs the mcMaxSize=600 cap | biggest hits (15–35k px, frames 15461–15503) = swirling autumn LEAVES — fast foreground content; the cap is doing exactly its birds-problem job. No large-defect gap in this minute. No change | unchanged |
+
+## Leg 2 conclusion (2026-07-19)
+
+**Shipped:** chroma spike detection + chroma-aware blob guard (colored flecks were
+invisible to the luma-only detector — the biggest catch of leg 2), plus the guidance
+toolkit landed mid-leg: frame-counter overlay, circle-detections preview, A/B-player
+click-to-mark with C-key clipboard report. **Validated:** banister glint rays, leaf
+swirls, and every other automated "defect" candidate turned out to be content that
+the chain correctly preserves — the safety story is now extremely strong. **Stopped:**
+two consecutive non-improving iterations (11, 12); the remaining reported classes
+(white vertical gashes, any residual specks) are sporadic and need exact coordinates.
+**Resume instantly by pasting a defect report** (pause A/B player → click defects →
+press C) — the loop then adds those exact frames as targeted samples.
 
 ## Loop conclusion (2026-07-19, after 8 cycles: iters 0–7)
 
